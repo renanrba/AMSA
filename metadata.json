@@ -1,0 +1,5 @@
+{
+  "name": "Airbnb Message Scraper & Analyzer",
+  "description": "Scrape e analise mensagens do Airbnb (2024-2025) com IA para gerar FAQs e relatórios Excel.",
+  "requestFramePermissions": []
+}
