@@ -1,6 +1,6 @@
-# Estudo de Viabilidade — Comunidade de Prestadores de Serviço (Marketplace de Manutenção) para hóspede.ai
+# Estudo de Viabilidade — Conecta Prestadores (Marketplace de Manutenção) para hóspede.ai
 
-**Status:** Rodada 3 — decisões de produto registradas, incluindo estrutura final de precificação por porte (seção 5.6.1); pontos ainda em aberto na seção 15
+**Status:** Rodada 4 — módulo renomeado para **Conecta Prestadores** (era "Comunidade de Prestadores"); adiciona métricas no Admin, upload de documentos no cadastro, disponibilidade/horários como filtro, catálogo de categorias ampliado e cobertura em cascata (estado → cidade → bairros)
 **Data:** 2026-08-29
 **Autor:** Claude Code (a pedido de Renan)
 **Objetivo deste documento:** consolidar a ideia descrita, avaliar viabilidade, e especificar requisitos funcionais, não funcionais, modelo de dados, fluxos e pontos de integração — para servir de base à próxima rodada de análise e à decisão de implementação.
@@ -46,9 +46,9 @@ Essa escolha de monetização (assinatura da oferta, não comissão sobre transa
 | Fase | Conteúdo | Racional |
 |---|---|---|
 | **Fase 0 — Discovery** | ✅ Decisões de produto tomadas diretamente (seção 15): moderação prévia, cidade piloto (João Pessoa/PB), trial gratuito, contas separadas, geocodificação já na Fase 1. Faixa de preço tem uma proposta inicial (seção 5.6.1), ainda a validar. O roteiro de entrevista já está pronto (`docs/questionario-discovery-fase0.md`) e vale aplicar em uma amostra de gestores/prestadores de João Pessoa para calibrar preço e categorias antes de travar os planos | Reduz risco residual antes de construir, mesmo com as decisões macro já tomadas |
-| **Fase 1 — MVP** | Cadastro de prestador, categorias fixas, cobertura por cidade/bairro, **geocodificação de `properties.address` e da cobertura do prestador** (RF-04/RF-12 completos desde o início), busca + filtro, contato via WhatsApp/telefone (link direto, sem chat interno), avaliação pós-contato, assinatura mensal/anual (Stripe), **trial gratuito concedido pelo Admin** (RF-40), fila de aprovação manual de cadastro | Escopo maior que um MVP mínimo por decisão do produto — geolocalização e trial entram já na Fase 1 |
-| **Fase 2** | Destaque pago/ordenação por prioridade, notificações automáticas ("avalie seu prestador"), painel do prestador com métricas de visualizações/contatos, verificação documental reforçada | Aumenta conversão e ARPU depois que o piloto em João Pessoa validar a monetização |
-| **Fase 3 (futuro)** | Chat interno, orçamento/proposta estruturada dentro da plataforma, agenda de disponibilidade do prestador, aplicativo/PWA do prestador, split opcional de pagamento para quem quiser | Só depois de validar tração no MVP |
+| **Fase 1 — MVP** | Cadastro de prestador com **cobertura em cascata estado→cidade→bairro** e **upload de documentos** (CPF/RG, CNPJ — RF-42), catálogo de categorias ampliado (RF-09), **disponibilidade** (24h/fins de semana/feriados — RF-43) como campo e filtro, geocodificação de `properties.address` e da cobertura do prestador (RF-04/RF-12), busca + filtro, contato via WhatsApp/telefone, avaliação pós-contato, assinatura mensal/anual (Stripe), trial gratuito concedido pelo Admin (RF-40), fila de aprovação manual (RF-35), **dashboard de métricas do Admin com seletor de período** (RF-38) | Escopo maior que um MVP mínimo por decisão do produto |
+| **Fase 2** | Destaque pago/ordenação por prioridade, notificações automáticas ("avalie seu prestador"), painel do prestador com métricas de visualizações/contatos, verificação por selfie (reforça o documento já coletado na Fase 1) | Aumenta conversão e ARPU depois que o piloto em João Pessoa validar a monetização |
+| **Fase 3 (futuro)** | Chat interno, orçamento/proposta estruturada dentro da plataforma, **agenda de disponibilidade com horários/slots específicos** (a Fase 1 só cobre os *flags* 24h/fim de semana/feriado do RF-43, não uma agenda real), aplicativo/PWA do prestador, split opcional de pagamento para quem quiser | Só depois de validar tração no MVP |
 
 Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 apenas como visão de longo prazo.
 
@@ -61,25 +61,27 @@ Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 
 - **RF-01** O prestador deve poder se cadastrar de forma independente do fluxo de gestor (landing page própria "Seja um prestador parceiro"), informando: nome/razão social, CPF ou CNPJ, telefone (WhatsApp), e-mail, foto/logo, descrição livre (bio), anos de experiência (opcional).
 - **RF-02** O prestador deve selecionar **uma ou mais categorias de serviço** (ver 5.2) dentre um catálogo controlado pelo hóspede.ai (não texto livre, para permitir busca estruturada).
 - **RF-03** Para cada categoria, o prestador informa um **preço base** e a unidade (visita/hora/m²/orçamento sob consulta) — apenas referencial, não vinculante.
-- **RF-04** *(escopo ampliado para a Fase 1)* O prestador define sua **área de cobertura**: cidade(s) + bairro(s), com opção de raio de atuação a partir de um endereço-base geocodificado (lat/lng) — decisão de produto trouxe a geolocalização para a Fase 1 (ver seção 15, item 7), então esse campo já nasce estruturado, não como texto livre a ser corrigido depois.
+- **RF-04** *(escopo ampliado para a Fase 1 — rodada 4: seleção em cascata)* O prestador define sua **área de cobertura** escolhendo **estado → cidade** (dropdowns dependentes) e, após selecionar a cidade, o sistema exibe **todos os bairros cadastrados daquela cidade** para seleção múltipla — em vez de um campo de texto livre. Cada bairro/cidade fica associado a lat/lng geocodificado (ver seção 15, item 7), viabilizando busca por proximidade. O catálogo de cidades/bairros começa restrito a João Pessoa/PB (piloto), mas a estrutura já suporta outras cidades sem redesenho — pré-requisito para expansão futura.
 - **RF-05** O prestador pode anexar até N fotos de trabalhos anteriores (portfólio) — opcional no MVP.
-- **RF-06** *(decidido)* Cadastro entra como `pending_approval` e **exige aprovação manual do Admin** antes de ficar visível — moderação prévia, não reativa. O Admin faz um cross-check das informações (documento, categorias declaradas, dados de contato) antes de aprovar (ver RF-35 e fluxo 9.1).
+- **RF-06** *(decidido)* Cadastro entra como `pending_approval` e **exige aprovação manual do Admin** antes de ficar visível — moderação prévia, não reativa. O Admin faz um cross-check das informações (documento, categorias declaradas, dados de contato, **documentos enviados — RF-42**) antes de aprovar (ver RF-35 e fluxo 9.1).
 - **RF-07** O prestador pode editar seus dados, categorias, preços e cobertura a qualquer momento; edições sensíveis (documento, categorias) podem re-disparar revisão.
 - **RF-08** O prestador pode pausar voluntariamente sua visibilidade (ex.: período de férias) sem cancelar a assinatura.
+- **RF-42** *(novo — rodada 4)* Upload de documentos para verificação, **privados** (visíveis só para o Admin no cross-check de RF-06, nunca no perfil público): CPF ou RG do titular (sempre obrigatório); quando o cadastro é pessoa jurídica (CNPJ informado — RF-01), documento do CNPJ também é obrigatório; foto de perfil/logo continua separada (essa sim pública, já prevista em RF-01) e não é tratada como documento de verificação.
+- **RF-43** *(novo — rodada 4)* Prestador informa sua **disponibilidade**: atende em horário comercial (padrão), e pode marcar adicionalmente "Atende 24h (emergências)", "Atende fins de semana" e "Atende feriados". Exibido no perfil público (RF-17) e usável como filtro de busca pelo gestor (RF-16) — diferencial relevante para chamados urgentes de turnover fora do horário comercial.
 
 ### 5.2 Catálogo de categorias de serviço
 
-- **RF-09** Catálogo inicial sugerido (editável pelo Admin): Elétrica, Hidráulica/Encanador, Ar-condicionado/Refrigeração, Limpeza/Faxina, Chaveiro, Marido de aluguel/Manutenção geral, Pintura, Jardinagem/Piscina, Dedetização/Controle de pragas, Gás (botijão/instalação), Montagem de móveis, Internet/Wi-Fi/TV.
+- **RF-09** *(catálogo ampliado — rodada 4)* Catálogo inicial sugerido (editável pelo Admin, RF-11): Elétrica, Hidráulica/Encanador, Ar-condicionado/Refrigeração, Limpeza/Faxina, Chaveiro, Marido de aluguel/Manutenção geral, Pintura, Jardinagem/Piscina, Dedetização/Controle de pragas, Gás (botijão/instalação), Montagem de móveis, Internet/Wi-Fi/TV, **Lavanderia**, **Vidraçaria**, **Marcenaria**, **Segurança/CFTV**, **Reforma/Alvenaria**, **Tapeçaria/Estofados**.
 - **RF-10** Cada categoria tem ícone, nome e descrição curta usada na busca ("Estou com problema no ar-condicionado" → mapeia para a categoria).
 - **RF-11** Admin pode criar, renomear, arquivar (nunca excluir, para não quebrar histórico) categorias.
 
 ### 5.3 Busca e descoberta (lado do gestor)
 
 - **RF-12** *(completo já na Fase 1)* Ponto de entrada contextual: dentro da tela de um imóvel específico, botão "Preciso de um profissional" que já pré-carrega bairro/cidade do imóvel — viável desde o início porque `properties.address` passa a ser geocodificado (ver seção 10, item 4, e seção 15, item 7).
-- **RF-13** Ponto de entrada geral: módulo "Comunidade de Prestadores" no menu, com busca livre por categoria + localidade.
+- **RF-13** Ponto de entrada geral: módulo **"Conecta Prestadores"** no menu, com busca livre por categoria + localidade.
 - **RF-14** Resultado lista prestadores **ativos** (assinatura em dia) na região, com: nome, foto, categorias, nota média, nº de avaliações, preço base, distância/bairro, selo "destaque" (se plano premium).
 - **RF-15** Ordenação padrão: relevância (combinação de nota média, nº de avaliações, proximidade, prestadores em destaque pagos) — critério exato a definir na Fase 2.
-- **RF-16** Filtros: categoria, bairro/cidade, nota mínima, faixa de preço.
+- **RF-16** Filtros: categoria, bairro/cidade, nota mínima, faixa de preço, **disponibilidade** (24h / fins de semana / feriados — RF-43).
 - **RF-17** Página de perfil público do prestador: bio, categorias, preços, portfólio, avaliações completas (com resposta do prestador, se houver), botão de contato.
 
 ### 5.4 Contato / geração de chamado
@@ -135,7 +137,12 @@ Uma segunda versão trazia limite de bairros/raio dentro de João Pessoa como di
 - **RF-35** *(decidido, RF-06)* Fila de aprovação de novos cadastros de prestador, com os dados declarados visíveis para o Admin fazer o cross-check antes de aprovar ou reprovar (com motivo).
 - **RF-36** Gestão de categorias, planos e preços de assinatura.
 - **RF-37** Busca/gestão de todos os prestadores (ativar/suspender manualmente, ex. por denúncia grave).
-- **RF-38** Dashboard de métricas do módulo (ver seção 13 — KPIs).
+- **RF-38** *(detalhado — rodada 4)* Dashboard de métricas do módulo, com **seletor de período** (este mês / últimos 3 meses / este ano / personalizado) controlando todos os números abaixo:
+  - Prestadores cadastrados no período (novo) vs. total ativo acumulado;
+  - Distribuição de prestadores por plano (Autônomo / Equipe / Empresa — contagem e %);
+  - Valor total arrecadado no período (soma das cobranças de assinatura pagas — proxy de MRR) e ticket médio;
+  - Taxa de aprovação (aprovados vs. reprovados na fila RF-35) e tempo médio de aprovação;
+  - Os demais KPIs de rede já cobertos na seção 13 (conversão busca→contato, avaliação pós-contato, etc.).
 - **RF-39** Fila de denúncias (perfis, avaliações) para tratamento manual.
 - **RF-40** *(novo — decisão da seção 15, item 5)* Concessão manual de **trial gratuito** a um prestador específico: Admin busca o prestador, define duração em dias e o plano-alvo, e o `provider_subscription` vira `trialing` sem cobrança até o fim do período. **Espelha exatamente** a funcionalidade já existente em `Suporte Admin → Billing Growth → Trials` (`components/admin/BillingGrowth/TrialsTab.tsx` + `api/admin/grant-trial`/`api/admin/trials`, que hoje fazem isso para `tenants`) — mesma UX (busca com autocomplete, formulário de dias + plano-alvo, lista editável/removível de trials concedidos), aplicada a `service_provider`/`provider_subscription` em vez de `tenants`. Ver seção 10, item 8.
 
@@ -198,10 +205,12 @@ erDiagram
 
 ### Entidades principais
 
-- **service_provider**: id, user_id (fk auth), nome/razão social, documento (cpf/cnpj), telefone, email, bio, avatar_url, status (`pending_approval`, `active`, `past_due`, `inactive`, `suspended`), rating_avg, rating_count, created_at, approved_at.
+- **service_provider**: id, user_id (fk auth), nome/razão social, tipo_pessoa (`PF`/`PJ`), documento (cpf/cnpj), telefone, email, bio, avatar_url, status (`pending_approval`, `active`, `past_due`, `inactive`, `suspended`), rating_avg, rating_count, disponibilidade_24h (bool), atende_fins_semana (bool), atende_feriados (bool), created_at, approved_at.
 - **service_category**: id, nome, slug, ícone, ativo (bool).
 - **provider_service**: provider_id, category_id, preco_base, unidade_preco, descricao.
-- **coverage_area**: provider_id, cidade, estado, bairro (nullable = cidade toda), lat/lng + raio_km — *geocodificado desde a Fase 1* (decisão da seção 15, item 7; antes cogitado só para a Fase 2).
+- **provider_documents**: provider_id, tipo (`cpf_rg`, `cnpj`), arquivo_url, status (`pending`, `approved`, `rejected`), created_at — **privado**, nunca exposto no perfil público, só legível por `is_current_user_platform_admin()` (RF-42).
+- **coverage_area**: provider_id, city_id (fk `cities`), bairro (fk/nome do bairro dentro da cidade), lat/lng + raio_km — *geocodificado desde a Fase 1* (decisão da seção 15, item 7; antes cogitado só para a Fase 2).
+- **states** / **cities** / **neighborhoods**: catálogo estruturado para a seleção em cascata do RF-04 — `states(id, sigla, nome)`, `cities(id, state_id, nome, lat, lng)`, `neighborhoods(id, city_id, nome, lat, lng)`. Populado inicialmente só com João Pessoa/PB e seus bairros (piloto); estrutura já suporta novas cidades sem alterar schema.
 - **subscription_plan**: id, nome, periodicidade (`monthly`/`yearly`), preco, desconto_pct, features (jsonb: destaque, limite_categorias, etc.) — ver proposta inicial de valores na seção 5.6.1.
 - **provider_subscription**: provider_id, plan_id, status (`trialing`,`active`,`past_due`,`canceled`), current_period_start, current_period_end, gateway_customer_id, gateway_subscription_id, `granted_by_admin` (nullable, fk para o admin que concedeu trial manual — RF-40).
 - **provider_trial_grants**: provider_id, trial_days, trial_end, target_plan, granted_by, status — espelha `trial_grants` (tabela já existente para `tenants`), usada pelo RF-40.
@@ -304,7 +313,8 @@ Esta seção foi reescrita após leitura direta de `renanrba/hospedeai-v2` (cód
 - **Papel do hóspede.ai**: deixar contratualmente claro nos Termos de Uso que a plataforma é um **diretório/vitrine de prestadores independentes**, não contrata, não fiscaliza execução do serviço, e não é parte na relação comercial entre gestor e prestador (mitiga responsabilidade civil por serviço malfeito, atraso, dano ao imóvel etc.).
 - **Nota fiscal**: emissão de NF do serviço prestado (ar-condicionado, limpeza etc.) é responsabilidade do prestador — fora do escopo da plataforma. O hóspede.ai emite NF apenas da **própria assinatura** cobrada do prestador.
 - **LGPD**: tratamento de CPF/CNPJ e dados de contato do prestador exige base legal (execução de contrato) e política de privacidade própria; avaliações contêm dados pessoais do gestor (autor) e opinião sobre o prestador — ambos precisam de tratamento adequado (retenção, direito de exclusão/anonimização).
-- **Cadastro/verificação**: recomenda-se, no mínimo, validação de formato de CPF/CNPJ e confirmação de telefone (OTP); verificação documental mais forte (selfie + doc) pode ser Fase 2/3 como diferencial de confiança ("prestador verificado").
+- **Cadastro/verificação**: rodada 4 trouxe o upload de documento (CPF/RG e, quando PJ, CNPJ) para a Fase 1, não mais Fase 2/3 (RF-42). Isso eleva a sensibilidade do dado tratado — imagem de documento de identidade é dado pessoal sensível para fins de LGPD — então o armazenamento precisa de acesso restrito por padrão (bucket privado, nunca servido por URL pública, leitura só via `is_current_user_platform_admin()`), retenção definida (por quanto tempo guardar após aprovação, ou após o prestador sair da plataforma) e não deve nunca aparecer no perfil público do prestador.
+- **Verificação por selfie** (comparar rosto com o documento) segue como possível diferencial de Fase 2/3, agora que o documento em si já é coletado desde o MVP.
 - **Cancelamento/reembolso de assinatura**: definir política clara (ex.: sem reembolso proporcional, conforme CDC permite para contratos de prestação continuada, desde que informado previamente).
 
 ---
