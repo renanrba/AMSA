@@ -1,11 +1,14 @@
 # Estudo de Viabilidade — Comunidade de Prestadores de Serviço (Marketplace de Manutenção) para hóspede.ai
 
-**Status:** Rascunho para discussão (Rodada 1 de análise)
+**Status:** Rascunho para discussão (Rodada 1 de análise — revisado com o código real do produto)
 **Data:** 2026-08-29
 **Autor:** Claude Code (a pedido de Renan)
 **Objetivo deste documento:** consolidar a ideia descrita, avaliar viabilidade, e especificar requisitos funcionais, não funcionais, modelo de dados, fluxos e pontos de integração — para servir de base à próxima rodada de análise e à decisão de implementação.
+**Fonte técnica:** `renanrba/hospedeai-v2` (leitura direta do código e de `docs/ARQUITETURA.md` do produto).
 
-> **Nota sobre o contexto técnico.** Este repositório (`renanrba/amsa`) contém hoje apenas o *Airbnb Message Scraper & Analyzer* (Express + Vite/React + Playwright + Gemini), uma ferramenta pontual do ecossistema hóspede.ai — não o produto principal de gestão de imóveis (autenticação de gestores, cadastro de propriedades, calendário, etc.). Não tenho visibilidade do código do sistema "principal" citado na solicitação. Por isso, as seções de arquitetura e integração abaixo são feitas com premissas explícitas (marcadas como **[PREMISSA]**), que precisam ser validadas por você antes de virar plano de implementação. Onde a decisão é de negócio/produto, deixei perguntas na seção 15.
+> **Nota sobre o contexto técnico (atualizada).** A primeira versão deste documento foi escrita só com acesso ao `renanrba/amsa` (uma ferramenta pontual, o Airbnb Message Scraper & Analyzer) — sem visibilidade do produto principal. Esta revisão já lê o código real do sistema, `renanrba/hospedeai-v2`, e substitui as premissas por fatos confirmados de arquitetura (seções 8 e 10). O que ainda depende de decisão de produto/negócio continua listado na seção 15.
+
+**Stack confirmada do hóspede.ai (`hospedeai-v2`):** React 19 + Vite no front-end (`components/`, `hooks/`, `services/`); API serverless em `api/v1/*` (Vercel Functions); banco e autenticação no Supabase (Postgres + Auth JWT + Row Level Security); multi-tenant via tabela `tenants` + `tenant_id` em cada tabela de domínio, com policies de RLS chamando `get_auth_tenant_id()`; **Stripe já integrado e em produção** para a assinatura do gestor (checkout, webhooks e billing portal, cobrando em BRL); Google Maps JS API + Leaflet/`react-leaflet` já são dependências do projeto (usados hoje para o guia de "lugares próximos" do hóspede); IA via Gemini (assistente "ARIA"). Ver `docs/ARQUITETURA.md` no próprio repositório do produto para a documentação oficial dessa arquitetura.
 
 ---
 
@@ -140,8 +143,8 @@ Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 
 | **Performance** | Busca por localidade + categoria deve responder em <500ms para volumes de até dezenas de milhares de prestadores; paginação obrigatória em listagens. |
 | **Escalabilidade** | Modelo de dados deve suportar crescimento multi-cidade sem redesenho (nada hardcoded por cidade). |
 | **Auditoria** | Log de mudanças de status de assinatura, aprovações/reprovações, suspensões, denúncias tratadas — quem fez o quê e quando. |
-| **Multi-tenancy** | Marketplace de prestadores é uma **rede compartilhada entre todos os tenants/gestores** do hóspede.ai (não isolado por conta) — é justamente o efeito de rede que cria valor. Precisa ficar claro no desenho multi-tenant existente que esta é uma exceção intencional ao isolamento por tenant. |
-| **Pagamentos** | PCI-DSS delegado ao gateway (nunca armazenar dados de cartão diretamente); cobrança recorrente com retries e webhooks idempotentes. |
+| **Multi-tenancy** | O hóspede.ai isola dados por `tenant_id` com RLS (`get_auth_tenant_id()`) em toda tabela de domínio. O marketplace de prestadores é uma **exceção intencional a esse padrão**: é uma rede compartilhada entre todos os tenants/gestores, não isolada por conta — é o efeito de rede que cria valor. As tabelas novas (`service_provider`, `provider_service`, `review` etc.) não devem levar `tenant_id`; precisam de policies próprias (select público para prestadores `active`, escrita restrita ao dono via `user_id = auth.uid()`), no mesmo espírito da policy pública já usada em `guide_nearby_places` ("Allow public read access ... USING (true)"). |
+| **Pagamentos** | PCI-DSS já delegado ao Stripe hoje (nenhum dado de cartão passa pelo hóspede.ai). Reaproveitar o mesmo padrão de `api/v1/billing.js` (checkout session + webhook idempotente + billing portal) para a assinatura do prestador, com Products/Prices próprios no Stripe. O checkout atual não declara `payment_method_types` explícito (fica no padrão cartão do Checkout) — **confirmar se boleto/PIX estão habilitados na conta Stripe** antes de assumir que já cobrem o público autônomo/MEI (seção 15). |
 | **Observabilidade** | Métricas de negócio (KPIs da seção 13) e métricas técnicas (latência de busca, taxa de erro de cobrança) monitoradas. |
 | **Internacionalização** | Não crítico no MVP (mercado BR), mas evitar hardcode de formatos (CPF/CNPJ, moeda) que impeçam expansão futura. |
 | **Acessibilidade** | Interface de busca/perfil deve seguir os mesmos padrões de acessibilidade já usados no produto principal. |
@@ -183,7 +186,7 @@ erDiagram
 - **favorite**: gestor_id, provider_id, created_at.
 - **audit_log**: entidade, entidade_id, ação, ator, payload_antes/depois, created_at.
 
-> **[PREMISSA]** Assumo que o hóspede.ai já possui uma tabela `users`/`gestor` e um sistema de autenticação reaproveitável, e que `property` (imóvel) já existe para permitir o vínculo contextual do RF-12. Confirmar com o time do produto principal.
+> **Confirmado no código.** `hospedeai-v2` já tem `public.tenants` (id, plan, status, `stripe_customer_id`, `stripe_subscription_id`), `public.users` (complementa `auth.users`, com `tenant_id` e `role` admin/member) e `public.properties` (`tenant_id`, `name`, `address` **em texto livre, sem lat/lng nem campos estruturados de cidade/bairro**, `status` Ativo/Manutenção/Inativo, `rating`, etc.). Ou seja: RF-12 (pré-carregar bairro/cidade do imóvel) não é imediato — hoje não há geocodificação de `properties.address`; é preciso geocodificar sob demanda (dá para reaproveitar a dependência `@googlemaps/js-api-loader` já presente no projeto, no mesmo padrão usado pela feature `guide_nearby_places`) ou pedir a cidade/bairro ao gestor na primeira busca. Também confirmado: `service_provider`/`review`/`favorite` não devem referenciar `tenants` — o prestador é um principal novo, ligado direto a `auth.users(id)`, sem vínculo de tenant (ver seção 10).
 
 ---
 
@@ -253,15 +256,15 @@ stateDiagram-v2
 
 ## 10. Integração com o sistema atual — pontos de atenção
 
-**[PREMISSA — validar]**: como não tenho acesso ao código do produto principal hóspede.ai, seguem recomendações de integração assumindo uma arquitetura típica de SaaS de gestão (auth central, banco relacional, dashboard web do gestor):
+Esta seção foi reescrita após leitura direta de `renanrba/hospedeai-v2` (código + `docs/ARQUITETURA.md` do próprio produto). O sistema segue uma regra de camadas explícita: **componentes nunca falam com Supabase ou API diretamente**, sempre via `services/`; `services/` usam o cliente Supabase (chave `anon` + RLS) para CRUD que pertence só ao usuário logado; qualquer coisa com segredos, billing, webhooks ou consulta **cross-tenant** vai obrigatoriamente por `api/v1/*`. O marketplace de prestadores se encaixa assim:
 
-1. **Identidade**: reaproveitar o provedor de autenticação existente. O prestador é um **novo tipo de conta**, não uma role dentro da conta de gestor (são públicos, personas diferentes, ciclo de vida de cobrança diferente). Avaliar se compensa um provedor de auth único compartilhado ou uma base de usuários separada com SSO opcional.
-2. **Navegação**: novo item de menu "Comunidade de Prestadores" para o gestor; e um **fluxo de onboarding separado** ("Seja um prestador parceiro") acessível fora do login de gestor (landing pública, para captar prestadores organicamente/SEO).
-3. **Contexto do imóvel**: ponto de entrada dentro da tela de detalhe do imóvel (RF-12) é o principal driver de valor percebido — vale priorizar essa integração mesmo que o módulo standalone venha depois.
-4. **Notificações**: reaproveitar o sistema de notificações do produto principal, se existir (e-mail/push), em vez de criar um novo canal.
-5. **Cobrança**: se o hóspede.ai já cobra o gestor via algum gateway (Stripe, Pagar.me, Asaas, Iugu), avaliar reaproveitar o mesmo provedor para a assinatura do prestador — reduz integração duplicada, mas atenção: o público prestador (autônomo/MEI brasileiro) tem forte preferência por **PIX recorrente e boleto**, nem todo gateway internacional cobre bem esse caso.
-6. **Isolamento**: mesmo reaproveitando infraestrutura, recomenda-se que o módulo viva em schema/domínio próprio (ex.: `marketplace.*`) para permitir evolução e, se necessário, extração futura em serviço separado sem acoplar ao core de reservas/imóveis.
-7. **Dados do imóvel para geolocalização**: se `property` já tem endereço/geo cadastrado, reaproveitar para popular automaticamente a busca contextual (RF-12) em vez de pedir ao gestor para digitar a localização de novo.
+1. **Identidade** — o prestador **não** deve virar uma linha em `public.users` (que hoje sempre carrega `tenant_id` e role admin/member de um tenant). Ele é um principal novo: `service_provider.user_id references auth.users(id)`, autenticado pelo mesmo Supabase Auth, mas sem tenant. Isso também define a regra de RLS: as policies de tenant (`get_auth_tenant_id()`) não se aplicam aqui — precisa de uma função equivalente tipo `is_provider_owner(provider_id)` comparando com `auth.uid()`.
+2. **Leitura pública sem servidor** — como a busca de prestadores é intencionalmente cross-tenant (rede compartilhada) mas **não** envolve segredo nenhum, ela pode seguir o padrão já usado em `guide_nearby_places` (`FOR SELECT USING (true)` para registros ativos) e ser lida direto via `services/` com RLS, sem precisar passar por `api/v1/*`. Só o que envolve Stripe/moderação cross-tenant (aprovação, suspensão, cobrança) precisa de endpoint dedicado.
+3. **Cobrança** — Stripe **já está em produção** no hóspede.ai (`api/v1/billing.js`: `create_checkout_session`, `webhook`, `billingPortal.sessions.create`), cobrando o gestor em BRL com um objeto `PLANS` (free/pro/enterprise) definido em `lib/billing/index.js`. Recomenda-se **espelhar exatamente esse padrão** para o prestador: um objeto `PROVIDER_PLANS` (mensal/anual), Products/Prices próprios no Stripe, um `provider_subscription` análogo a `tenants.stripe_customer_id`/`stripe_subscription_id`, e um handler de webhook separado (ou uma branch dentro do handler existente, discriminando por `metadata` do evento) que atualiza `service_provider.status` em vez de `tenants.plan`. Evita reinventar a idempotência de webhook que já existe.
+4. **Geolocalização** — `@googlemaps/js-api-loader` e `leaflet`/`react-leaflet` já são dependências do projeto e já resolvem geolocalização em produção (feature de "lugares próximos" do guia do hóspede, com lat/lng gravados em `guide_nearby_places`). Reaproveitar o mesmo padrão para: (a) geocodificar a cobertura do prestador (RF-04) e (b) — quando possível — geocodificar `properties.address` sob demanda para popular a busca contextual (RF-12), já que hoje esse campo é texto livre sem lat/lng (seção 8).
+5. **Navegação** — novo item de menu para o gestor (a `AuthContext` atual só resolve sessão de tenant, então essa é uma tela nova de gestor autenticado); onboarding do prestador fica **fora** desse fluxo, como uma landing pública própria ("Seja um prestador parceiro"), similar em espírito às páginas de `components/products/*` que hoje descrevem os produtos do hóspede.ai para o público externo — mas com fluxo de cadastro + checkout, não só marketing.
+6. **Notificações** — o produto já tem `app.js` (`chat`, `support-chat`, `activities-log`) e um assistente de IA (ARIA); vale avaliar mais adiante se cabe ao ARIA sugerir o módulo quando o gestor relatar um problema em texto ("ar-condicionado quebrado" → sugestão de abrir a busca de prestadores) — não é MVP, mas é um gancho natural de produto já existente.
+7. **Isolamento de schema** — mesmo padrão do resto do banco: migrations dedicadas em `supabase/migrations/`, tabelas novas sem acoplamento a `properties`/`reservations` além da referência opcional `property_id` em `service_contact`. Não requer schema Postgres separado — o projeto já mantém tudo em `public.*` com isolamento por RLS, não por schema.
 
 ---
 
@@ -317,14 +320,15 @@ stateDiagram-v2
 
 ## 15. Perguntas em aberto para a próxima rodada
 
-1. O sistema principal do hóspede.ai já tem autenticação/usuário base que dá para reaproveitar para o prestador, ou será uma base de contas separada?
-2. Já existe algum gateway de pagamento em uso hoje (para cobrança do gestor) que possa ser reaproveitado para a assinatura recorrente do prestador? Precisa suportar PIX recorrente/boleto para o público de prestador autônomo?
-3. Moderação de cadastro será **prévia** (aprovação manual antes de aparecer) ou **reativa** (aparece direto, moderação só por denúncia)? Isso muda bastante o esforço operacional inicial.
-4. Quais cidades/regiões fazem sentido para o piloto, com base na concentração atual de gestores hóspede.ai?
-5. Faixa de preço da assinatura do prestador (mensal e anual) — já existe uma hipótese, ou parte de pesquisa de mercado (GetNinjas Profissionais, Houzz Pro etc.)?
-6. Haverá período de trial gratuito para os primeiros prestadores (estratégia de cold start)?
-7. O prestador poderá ser, ao mesmo tempo, gestor de imóveis (dupla persona)? Isso afeta o modelo de contas.
-8. Existe já um catálogo/estrutura de "imóvel" (property) com endereço geocodificado que possa alimentar a busca contextual (RF-12)?
+Respondidas nesta revisão, com base no código de `hospedeai-v2` (removidas da lista): existe auth/base de usuários reaproveitável (Supabase Auth); existe gateway de pagamento em uso (Stripe, já cobrando em BRL); existe base de geolocalização no stack (Google Maps + Leaflet). Seguem em aberto, porque dependem de decisão de produto ou de algo que não dá para confirmar só lendo o código:
+
+1. **PIX/boleto no Stripe** — o checkout atual não declara `payment_method_types` explícito no código revisado. Isso depende de configuração da conta Stripe (dashboard), não do código. Precisa confirmar se boleto/PIX já estão habilitados, ou se será preciso ativá-los/complementar com outro meio de pagamento para agradar o público autônomo/MEI.
+2. Moderação de cadastro será **prévia** (aprovação manual antes de aparecer) ou **reativa** (aparece direto, moderação só por denúncia)? Isso muda bastante o esforço operacional inicial.
+3. Quais cidades/regiões fazem sentido para o piloto, com base na concentração atual de gestores hóspede.ai (dado que não temos acesso a métricas de uso/base de tenants por região)?
+4. Faixa de preço da assinatura do prestador (mensal e anual) — já existe uma hipótese, ou parte de pesquisa de mercado (GetNinjas Profissionais, Houzz Pro etc.)?
+5. Haverá período de trial gratuito para os primeiros prestadores (estratégia de cold start)?
+6. O prestador poderá ser, ao mesmo tempo, gestor de imóveis (dupla persona)? O modelo de dados proposto (seção 8) já assume que não — prestador é um principal separado, sem `tenant_id` — mas vale confirmar se isso bloqueia algum caso de uso real (ex.: um gestor que também presta serviço para outros gestores).
+7. Vale a pena investir, ainda na Fase 1, em geocodificar `properties.address` (hoje texto livre) para viabilizar o RF-12 completo, ou o MVP pode pedir cidade/bairro manualmente ao gestor na primeira busca e deixar a geocodificação automática para a Fase 2?
 
 ---
 
