@@ -1,6 +1,6 @@
 # Estudo de Viabilidade — Comunidade de Prestadores de Serviço (Marketplace de Manutenção) para hóspede.ai
 
-**Status:** Rodada 2 — decisões de produto registradas (Fase 0/Discovery concluída por decisão direta, sem aguardar as entrevistas de campo); pontos ainda em aberto na seção 15
+**Status:** Rodada 3 — decisões de produto registradas, incluindo estrutura final de precificação por porte (seção 5.6.1); pontos ainda em aberto na seção 15
 **Data:** 2026-08-29
 **Autor:** Claude Code (a pedido de Renan)
 **Objetivo deste documento:** consolidar a ideia descrita, avaliar viabilidade, e especificar requisitos funcionais, não funcionais, modelo de dados, fluxos e pontos de integração — para servir de base à próxima rodada de análise e à decisão de implementação.
@@ -106,22 +106,24 @@ Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 
 - **RF-31** Prestador pode cancelar a qualquer momento; permanece visível até o fim do período já pago, depois some (sem reembolso proporcional, salvo definição contrária).
 - **RF-32** Histórico de faturas/recibos disponível no painel do prestador.
 
-### 5.6.1 Proposta de planos (piloto João Pessoa) — em discussão
+### 5.6.1 Planos por porte (piloto João Pessoa) — estrutura decidida, valores a validar
 
-Proposta inicial trazida para a rodada de decisão, ainda **aberta a revisão de estrutura** (ver seção 15, item 4): tiered pricing por porte/categoria do prestador, e não um preço único fixo.
+**Rodada 3.** A primeira proposta (5.6.1 original) misturava porte com categoria de serviço (um eletricista autônomo pagaria o dobro de uma diarista autônoma só pela categoria) — decisão foi **desacoplar porte de categoria**: os planos diferenciam por *tamanho do prestador* (autônomo → equipe → empresa), nunca por qual serviço ele presta. Categoria continua existindo no cadastro (RF-02) para busca/filtro, só não entra mais no preço.
 
-| Plano | Mensal | Anual (equivalente/mês) | Público-alvo | O que oferece |
-|---|---|---|---|---|
-| **Essencial** | R$ 39,90 | R$ 359,00/ano (~R$ 29,90) | Diaristas e faxineiras autônomas | Perfil ativo, volume de chamados limitado |
-| **Profissional** | R$ 79,90 | R$ 719,00/ano (~R$ 59,90) | Eletricistas, encanadores, pintores, maridos de aluguel | Chamados ilimitados na região, selo de prestador verificado |
-| **Premium / Empresa** | R$ 149,90 | R$ 1.349,00/ano (~R$ 112,40) | Empresas de limpeza/higienização, equipes de reforma, múltiplos funcionários no mesmo perfil | Prioridade de listagem, múltiplos funcionários vinculados ao perfil |
+Uma segunda versão trazia limite de bairros/raio dentro de João Pessoa como diferenciador do tier mais barato — **decisão foi não usar isso**: numa única cidade de porte médio, restringir alcance geográfico do prestador mais barato reduz densidade de oferta visível justo na fase de cold start (seção 12), que já é o maior risco do lançamento. Diferenciação por alcance geográfico fica reservada para quando o marketplace expandir para múltiplas cidades (Fase 2/3 — aí sim "plano regional" vs. "plano local" é uma diferença de valor real).
 
-Racional por trás da faixa: base de referência ~1.000 gestores em João Pessoa administrando entre 3 e 10 flats cada (frota estimada de 3.000–10.000 unidades), concentrados em bairros turísticos de alta ocupação (Manaíra, Tambaú, Cabo Branco, Bessa) — volume de turnover e manutenção urgente relevante o bastante para justificar o preço de acesso a essa base qualificada.
+| Plano | Mensal | Anual ("2 meses grátis", ~17% off) | Nº de membros vinculados | Selo | Destaque na busca | Relatórios | Suporte prioritário |
+|---|---|---|---|---|---|---|---|
+| **Autônomo / Individual** | R$ 39,90 | R$ 399,00/ano (~R$ 33,25/mês) | 1 (só o titular) | — | — | — | — |
+| **Equipe / PME** | R$ 89,90 | R$ 899,00/ano (~R$ 74,92/mês) | até 5 | "Equipe verificada" | — | Básico (visualizações) | — |
+| **Empresa / Premium** | R$ 179,90 | R$ 1.799,00/ano (~R$ 149,92/mês) | Ilimitado | "Empresa verificada" | Sim (RF-15) | Completo (cliques, conversão) | Sim |
 
-**Pontos ainda a decidir antes de travar (seção 15, item 4):**
-- Preço único fixo (mais simples de comunicar e operar no MVP) vs. tiers por porte/categoria (capta mais valor de quem tem mais demanda, mas adiciona complexidade de produto — precisa de auto ou hetero-classificação do prestador no plano certo).
-- Se optar por tiers, qual sinal usa pra classificar o prestador no tier certo (autodeclaração no cadastro? categoria de serviço? nº de funcionários?) — hoje a tabela mistura porte (MEI vs. empresa) com categoria de serviço (limpeza vs. elétrica), o que pode gerar percepção de injustiça (ex.: um eletricista autônomo pagando o dobro de uma diarista autônoma).
-- Validar essas faixas com as entrevistas de discovery (`docs/questionario-discovery-fase0.md`, perguntas 10–11 do lado prestador) antes de lançar — a pergunta 11 já pede exatamente essa faixa de disposição a pagar.
+**Importante: cobertura em João Pessoa (cidade toda, sem limite de bairro) é igual para os três planos.** O que diferencia é o que o prestador ganha *em cima* da visibilidade (equipe, selo, destaque, dados, suporte), nunca a visibilidade em si.
+
+- **RF-41** *(novo)* Prestador pode vincular membros de equipe ao próprio perfil (nome, foto opcional), até o limite do plano contratado. Ao tentar exceder o limite, a UI oferece upgrade de plano em vez de simplesmente bloquear a ação.
+- **Anti-gaming (regra de negócio 9, seção 6):** o tier mínimo elegível é determinado pelo próprio cadastro (RF-01) — CNPJ informado ou "múltiplos funcionários" declarado bloqueia a autodeclaração no plano Autônomo, evitando que uma empresa se cadastre como autônoma só para pagar menos.
+
+**Ainda pendente (seção 15, item 4):** a *estrutura* está decidida; os *valores exatos* (R$ 39,90/89,90/179,90) seguem como hipótese de mercado a validar com as perguntas 10–11 do questionário de discovery (`docs/questionario-discovery-fase0.md`) numa amostra real de prestadores de João Pessoa antes de travar o preço final.
 
 ### 5.7 Notificações
 
@@ -149,6 +151,7 @@ Racional por trás da faixa: base de referência ~1.000 gestores em João Pessoa
 6. Alterações cadastrais sensíveis (documento, categoria) podem exigir nova aprovação — evita golpe de "troca de identidade" após aprovação inicial.
 7. O hóspede.ai não é parte na relação comercial do serviço contratado — apenas plataforma de descoberta e reputação (ver seção 11, aspectos legais).
 8. *(decidido, seção 15 item 6)* Gestor e prestador são **sempre contas separadas**, mesmo quando a mesma pessoa física atua nos dois papéis (ex.: um gestor que também presta serviço para outros gestores) — sem conta híbrida/dupla persona. Precisa de dois logins distintos (podem usar o mesmo e-mail em contas diferentes, a depender de como o Supabase Auth for configurado, mas nunca uma sessão só que alterna entre os dois papéis).
+9. *(decidido, seção 5.6.1)* O tier de assinatura elegível é determinado pelo cadastro (CNPJ informado ou "múltiplos funcionários" declarado bloqueia o plano Autônomo/Individual) — evita que um prestador de porte maior se autodeclare no plano mais barato.
 
 ---
 
@@ -202,6 +205,7 @@ erDiagram
 - **subscription_plan**: id, nome, periodicidade (`monthly`/`yearly`), preco, desconto_pct, features (jsonb: destaque, limite_categorias, etc.) — ver proposta inicial de valores na seção 5.6.1.
 - **provider_subscription**: provider_id, plan_id, status (`trialing`,`active`,`past_due`,`canceled`), current_period_start, current_period_end, gateway_customer_id, gateway_subscription_id, `granted_by_admin` (nullable, fk para o admin que concedeu trial manual — RF-40).
 - **provider_trial_grants**: provider_id, trial_days, trial_end, target_plan, granted_by, status — espelha `trial_grants` (tabela já existente para `tenants`), usada pelo RF-40.
+- **provider_members**: provider_id, nome, foto_url (opcional), created_at — membros de equipe vinculados ao perfil, limitados pelo plano (RF-41, seção 5.6.1).
 - **invoice**: subscription_id, valor, status (`paid`,`failed`,`pending`), paid_at, gateway_transaction_id.
 - **service_contact** (lead): gestor_id, provider_id, category_id, property_id (nullable), mensagem (opcional), canal (`whatsapp`/`telefone`), created_at.
 - **review**: service_contact_id (unique), gestor_id, provider_id, nota (1-5), comentario, resposta_prestador, created_at.
@@ -354,11 +358,12 @@ Esta seção foi reescrita após leitura direta de `renanrba/hospedeai-v2` (cód
 5. **Trial gratuito: sim, concedido pelo Admin.** Nova funcionalidade (RF-40) espelhando `Suporte Admin → Billing Growth → Trials` já existente no produto para `tenants` — mesma tela, mesmo padrão de endpoints, aplicado a prestadores (seção 10, item 8).
 6. **Sem dupla persona.** Gestor e prestador são sempre contas separadas, mesmo para a mesma pessoa física (regra de negócio 8, seção 6).
 7. **Geocodificação de `properties.address`: sim, já na Fase 1.** RF-04 e RF-12 saem completos desde o MVP, não como fallback manual (seção 4, seção 8, seção 10 item 4). Implica uma migration aditiva na tabela `properties` do produto principal (não só nas tabelas novas do marketplace) e um job de backfill para os imóveis já existentes.
+4. **Estrutura de preço do prestador — decidida (Rodada 3).** Planos por *porte* (Autônomo/Individual, Equipe/PME, Empresa/Premium — RF-41, seção 5.6.1), nunca por categoria de serviço; sem limite de bairro dentro de João Pessoa (isso ficou pra quando o marketplace expandir pra outras cidades); diferenciação por nº de membros vinculados, selo, destaque, relatórios e suporte prioritário. Regra anti-gaming: CNPJ/múltiplos funcionários no cadastro bloqueia autodeclaração no tier mais barato (regra de negócio 9).
 
 ### Ainda em aberto
 
 1. **PIX/boleto no Stripe** — segue em aberto por decisão explícita (nada bloqueia começar a construir a assinatura só com cartão e adicionar boleto/PIX depois; mas vale decidir antes do lançamento em João Pessoa, dado o público autônomo/MEI).
-4. **Estrutura de preço do prestador** — proposta inicial na seção 5.6.1 (tiers Essencial/Profissional/Premium, R$ 39,90–R$ 149,90/mês), mas a estrutura em si está em aberto: preço único fixo (mais simples) vs. tiers por porte/categoria (capta mais valor, mais complexo de operar e de comunicar). Recomendação: aplicar as perguntas 10–11 do questionário de discovery (`docs/questionario-discovery-fase0.md`) em uma amostra real de prestadores de João Pessoa antes de travar os valores — a proposta atual é uma hipótese de mercado, não dado de campo.
+4b. **Valores exatos dos planos** — a estrutura está travada (item 4 acima), mas R$ 39,90/89,90/179,90 (seção 5.6.1) seguem como hipótese de mercado. Aplicar as perguntas 10–11 do questionário de discovery (`docs/questionario-discovery-fase0.md`) em uma amostra real de prestadores de João Pessoa antes de lançar o preço final.
 
 ---
 
