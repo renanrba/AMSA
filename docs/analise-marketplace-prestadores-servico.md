@@ -1,6 +1,6 @@
 # Estudo de Viabilidade — Comunidade de Prestadores de Serviço (Marketplace de Manutenção) para hóspede.ai
 
-**Status:** Rascunho para discussão (Rodada 1 de análise — revisado com o código real do produto)
+**Status:** Rodada 2 — decisões de produto registradas (Fase 0/Discovery concluída por decisão direta, sem aguardar as entrevistas de campo); pontos ainda em aberto na seção 15
 **Data:** 2026-08-29
 **Autor:** Claude Code (a pedido de Renan)
 **Objetivo deste documento:** consolidar a ideia descrita, avaliar viabilidade, e especificar requisitos funcionais, não funcionais, modelo de dados, fluxos e pontos de integração — para servir de base à próxima rodada de análise e à decisão de implementação.
@@ -45,9 +45,9 @@ Essa escolha de monetização (assinatura da oferta, não comissão sobre transa
 
 | Fase | Conteúdo | Racional |
 |---|---|---|
-| **Fase 0 — Discovery** | Validar categorias, faixa de preço da assinatura, cidades piloto, entrevistar 10-15 prestadores e gestores | Reduz risco antes de construir |
-| **Fase 1 — MVP** | Cadastro de prestador, categorias fixas, cobertura por cidade/bairro (texto), busca + filtro, contato via WhatsApp/telefone (link direto, sem chat interno), avaliação pós-contato, assinatura mensal (1 gateway), painel admin básico de aprovação | Menor conjunto que já entrega valor e testa a monetização |
-| **Fase 2** | Plano anual com desconto, geolocalização por raio (mapa), destaque pago/ordenação por prioridade, notificações automáticas ("avalie seu prestador"), painel do prestador com métricas de visualizações/contatos | Aumenta conversão e ARPU |
+| **Fase 0 — Discovery** | ✅ Decisões de produto tomadas diretamente (seção 15): moderação prévia, cidade piloto (João Pessoa/PB), trial gratuito, contas separadas, geocodificação já na Fase 1. Faixa de preço tem uma proposta inicial (seção 5.6.1), ainda a validar. O roteiro de entrevista já está pronto (`docs/questionario-discovery-fase0.md`) e vale aplicar em uma amostra de gestores/prestadores de João Pessoa para calibrar preço e categorias antes de travar os planos | Reduz risco residual antes de construir, mesmo com as decisões macro já tomadas |
+| **Fase 1 — MVP** | Cadastro de prestador, categorias fixas, cobertura por cidade/bairro, **geocodificação de `properties.address` e da cobertura do prestador** (RF-04/RF-12 completos desde o início), busca + filtro, contato via WhatsApp/telefone (link direto, sem chat interno), avaliação pós-contato, assinatura mensal/anual (Stripe), **trial gratuito concedido pelo Admin** (RF-40), fila de aprovação manual de cadastro | Escopo maior que um MVP mínimo por decisão do produto — geolocalização e trial entram já na Fase 1 |
+| **Fase 2** | Destaque pago/ordenação por prioridade, notificações automáticas ("avalie seu prestador"), painel do prestador com métricas de visualizações/contatos, verificação documental reforçada | Aumenta conversão e ARPU depois que o piloto em João Pessoa validar a monetização |
 | **Fase 3 (futuro)** | Chat interno, orçamento/proposta estruturada dentro da plataforma, agenda de disponibilidade do prestador, aplicativo/PWA do prestador, split opcional de pagamento para quem quiser | Só depois de validar tração no MVP |
 
 Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 apenas como visão de longo prazo.
@@ -61,9 +61,9 @@ Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 
 - **RF-01** O prestador deve poder se cadastrar de forma independente do fluxo de gestor (landing page própria "Seja um prestador parceiro"), informando: nome/razão social, CPF ou CNPJ, telefone (WhatsApp), e-mail, foto/logo, descrição livre (bio), anos de experiência (opcional).
 - **RF-02** O prestador deve selecionar **uma ou mais categorias de serviço** (ver 5.2) dentre um catálogo controlado pelo hóspede.ai (não texto livre, para permitir busca estruturada).
 - **RF-03** Para cada categoria, o prestador informa um **preço base** e a unidade (visita/hora/m²/orçamento sob consulta) — apenas referencial, não vinculante.
-- **RF-04** O prestador define sua **área de cobertura**: cidade(s) + bairro(s), ou raio de atuação a partir de um endereço-base (Fase 2, com geolocalização).
+- **RF-04** *(escopo ampliado para a Fase 1)* O prestador define sua **área de cobertura**: cidade(s) + bairro(s), com opção de raio de atuação a partir de um endereço-base geocodificado (lat/lng) — decisão de produto trouxe a geolocalização para a Fase 1 (ver seção 15, item 7), então esse campo já nasce estruturado, não como texto livre a ser corrigido depois.
 - **RF-05** O prestador pode anexar até N fotos de trabalhos anteriores (portfólio) — opcional no MVP.
-- **RF-06** Cadastro entra como `pending_approval` até ser revisado pelo Admin (RF-30) **ou** aprovação automática com moderação reativa — decisão de produto a validar (ver seção 15).
+- **RF-06** *(decidido)* Cadastro entra como `pending_approval` e **exige aprovação manual do Admin** antes de ficar visível — moderação prévia, não reativa. O Admin faz um cross-check das informações (documento, categorias declaradas, dados de contato) antes de aprovar (ver RF-35 e fluxo 9.1).
 - **RF-07** O prestador pode editar seus dados, categorias, preços e cobertura a qualquer momento; edições sensíveis (documento, categorias) podem re-disparar revisão.
 - **RF-08** O prestador pode pausar voluntariamente sua visibilidade (ex.: período de férias) sem cancelar a assinatura.
 
@@ -75,7 +75,7 @@ Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 
 
 ### 5.3 Busca e descoberta (lado do gestor)
 
-- **RF-12** Ponto de entrada contextual: dentro da tela de um imóvel específico, botão "Preciso de um profissional" que já pré-carrega bairro/cidade do imóvel.
+- **RF-12** *(completo já na Fase 1)* Ponto de entrada contextual: dentro da tela de um imóvel específico, botão "Preciso de um profissional" que já pré-carrega bairro/cidade do imóvel — viável desde o início porque `properties.address` passa a ser geocodificado (ver seção 10, item 4, e seção 15, item 7).
 - **RF-13** Ponto de entrada geral: módulo "Comunidade de Prestadores" no menu, com busca livre por categoria + localidade.
 - **RF-14** Resultado lista prestadores **ativos** (assinatura em dia) na região, com: nome, foto, categorias, nota média, nº de avaliações, preço base, distância/bairro, selo "destaque" (se plano premium).
 - **RF-15** Ordenação padrão: relevância (combinação de nota média, nº de avaliações, proximidade, prestadores em destaque pagos) — critério exato a definir na Fase 2.
@@ -100,11 +100,28 @@ Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 
 
 ### 5.6 Assinatura e cobrança do prestador
 
-- **RF-28** Prestador escolhe entre plano **mensal** ou **anual (com desconto)** ao final do cadastro (ou depois, se ficou como rascunho).
+- **RF-28** Prestador escolhe entre plano **mensal** ou **anual (com desconto)** ao final do cadastro (ou depois, se ficou como rascunho). Meio de pagamento no Stripe (cartão apenas, ou também boleto/PIX) **ainda em aberto** — ver seção 15, item 1.
 - **RF-29** Cobrança recorrente automática via gateway de pagamento; falha de cobrança move o status para `past_due` com período de carência (ex.: 3-5 dias) antes de `inactive`.
-- **RF-30** Somente prestadores com assinatura `active` aparecem em buscas e perfis públicos; `past_due`/`inactive`/`pending_approval`/`suspended` ficam ocultos (mas o prestador ainda acessa seu painel para regularizar).
+- **RF-30** Somente prestadores com assinatura `active` (inclui `trialing`, RF-40) aparecem em buscas e perfis públicos; `past_due`/`inactive`/`pending_approval`/`suspended` ficam ocultos (mas o prestador ainda acessa seu painel para regularizar).
 - **RF-31** Prestador pode cancelar a qualquer momento; permanece visível até o fim do período já pago, depois some (sem reembolso proporcional, salvo definição contrária).
 - **RF-32** Histórico de faturas/recibos disponível no painel do prestador.
+
+### 5.6.1 Proposta de planos (piloto João Pessoa) — em discussão
+
+Proposta inicial trazida para a rodada de decisão, ainda **aberta a revisão de estrutura** (ver seção 15, item 4): tiered pricing por porte/categoria do prestador, e não um preço único fixo.
+
+| Plano | Mensal | Anual (equivalente/mês) | Público-alvo | O que oferece |
+|---|---|---|---|---|
+| **Essencial** | R$ 39,90 | R$ 359,00/ano (~R$ 29,90) | Diaristas e faxineiras autônomas | Perfil ativo, volume de chamados limitado |
+| **Profissional** | R$ 79,90 | R$ 719,00/ano (~R$ 59,90) | Eletricistas, encanadores, pintores, maridos de aluguel | Chamados ilimitados na região, selo de prestador verificado |
+| **Premium / Empresa** | R$ 149,90 | R$ 1.349,00/ano (~R$ 112,40) | Empresas de limpeza/higienização, equipes de reforma, múltiplos funcionários no mesmo perfil | Prioridade de listagem, múltiplos funcionários vinculados ao perfil |
+
+Racional por trás da faixa: base de referência ~1.000 gestores em João Pessoa administrando entre 3 e 10 flats cada (frota estimada de 3.000–10.000 unidades), concentrados em bairros turísticos de alta ocupação (Manaíra, Tambaú, Cabo Branco, Bessa) — volume de turnover e manutenção urgente relevante o bastante para justificar o preço de acesso a essa base qualificada.
+
+**Pontos ainda a decidir antes de travar (seção 15, item 4):**
+- Preço único fixo (mais simples de comunicar e operar no MVP) vs. tiers por porte/categoria (capta mais valor de quem tem mais demanda, mas adiciona complexidade de produto — precisa de auto ou hetero-classificação do prestador no plano certo).
+- Se optar por tiers, qual sinal usa pra classificar o prestador no tier certo (autodeclaração no cadastro? categoria de serviço? nº de funcionários?) — hoje a tabela mistura porte (MEI vs. empresa) com categoria de serviço (limpeza vs. elétrica), o que pode gerar percepção de injustiça (ex.: um eletricista autônomo pagando o dobro de uma diarista autônoma).
+- Validar essas faixas com as entrevistas de discovery (`docs/questionario-discovery-fase0.md`, perguntas 10–11 do lado prestador) antes de lançar — a pergunta 11 já pede exatamente essa faixa de disposição a pagar.
 
 ### 5.7 Notificações
 
@@ -113,11 +130,12 @@ Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 
 
 ### 5.8 Painel administrativo (Admin)
 
-- **RF-35** Fila de aprovação de novos cadastros de prestador (se moderação prévia for adotada).
+- **RF-35** *(decidido, RF-06)* Fila de aprovação de novos cadastros de prestador, com os dados declarados visíveis para o Admin fazer o cross-check antes de aprovar ou reprovar (com motivo).
 - **RF-36** Gestão de categorias, planos e preços de assinatura.
 - **RF-37** Busca/gestão de todos os prestadores (ativar/suspender manualmente, ex. por denúncia grave).
 - **RF-38** Dashboard de métricas do módulo (ver seção 13 — KPIs).
 - **RF-39** Fila de denúncias (perfis, avaliações) para tratamento manual.
+- **RF-40** *(novo — decisão da seção 15, item 5)* Concessão manual de **trial gratuito** a um prestador específico: Admin busca o prestador, define duração em dias e o plano-alvo, e o `provider_subscription` vira `trialing` sem cobrança até o fim do período. **Espelha exatamente** a funcionalidade já existente em `Suporte Admin → Billing Growth → Trials` (`components/admin/BillingGrowth/TrialsTab.tsx` + `api/admin/grant-trial`/`api/admin/trials`, que hoje fazem isso para `tenants`) — mesma UX (busca com autocomplete, formulário de dias + plano-alvo, lista editável/removível de trials concedidos), aplicada a `service_provider`/`provider_subscription` em vez de `tenants`. Ver seção 10, item 8.
 
 ---
 
@@ -130,6 +148,7 @@ Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 
 5. Prestador pode atuar em múltiplas categorias e múltiplas cidades/bairros dentro do mesmo cadastro.
 6. Alterações cadastrais sensíveis (documento, categoria) podem exigir nova aprovação — evita golpe de "troca de identidade" após aprovação inicial.
 7. O hóspede.ai não é parte na relação comercial do serviço contratado — apenas plataforma de descoberta e reputação (ver seção 11, aspectos legais).
+8. *(decidido, seção 15 item 6)* Gestor e prestador são **sempre contas separadas**, mesmo quando a mesma pessoa física atua nos dois papéis (ex.: um gestor que também presta serviço para outros gestores) — sem conta híbrida/dupla persona. Precisa de dois logins distintos (podem usar o mesmo e-mail em contas diferentes, a depender de como o Supabase Auth for configurado, mas nunca uma sessão só que alterna entre os dois papéis).
 
 ---
 
@@ -170,6 +189,8 @@ erDiagram
     GESTOR ||--o{ FAVORITE : marca
     SERVICE_PROVIDER ||--o{ FAVORITE : "é favoritado"
     PROPERTY ||--o{ SERVICE_CONTACT : "opcionalmente associado a"
+    SERVICE_PROVIDER ||--o{ PROVIDER_TRIAL_GRANT : "pode receber"
+    ADMIN ||--o{ PROVIDER_TRIAL_GRANT : concede
 ```
 
 ### Entidades principais
@@ -177,16 +198,17 @@ erDiagram
 - **service_provider**: id, user_id (fk auth), nome/razão social, documento (cpf/cnpj), telefone, email, bio, avatar_url, status (`pending_approval`, `active`, `past_due`, `inactive`, `suspended`), rating_avg, rating_count, created_at, approved_at.
 - **service_category**: id, nome, slug, ícone, ativo (bool).
 - **provider_service**: provider_id, category_id, preco_base, unidade_preco, descricao.
-- **coverage_area**: provider_id, cidade, estado, bairro (nullable = cidade toda), lat/lng + raio_km (Fase 2).
-- **subscription_plan**: id, nome, periodicidade (`monthly`/`yearly`), preco, desconto_pct, features (jsonb: destaque, limite_categorias, etc.).
-- **provider_subscription**: provider_id, plan_id, status (`trialing`,`active`,`past_due`,`canceled`), current_period_start, current_period_end, gateway_customer_id, gateway_subscription_id.
+- **coverage_area**: provider_id, cidade, estado, bairro (nullable = cidade toda), lat/lng + raio_km — *geocodificado desde a Fase 1* (decisão da seção 15, item 7; antes cogitado só para a Fase 2).
+- **subscription_plan**: id, nome, periodicidade (`monthly`/`yearly`), preco, desconto_pct, features (jsonb: destaque, limite_categorias, etc.) — ver proposta inicial de valores na seção 5.6.1.
+- **provider_subscription**: provider_id, plan_id, status (`trialing`,`active`,`past_due`,`canceled`), current_period_start, current_period_end, gateway_customer_id, gateway_subscription_id, `granted_by_admin` (nullable, fk para o admin que concedeu trial manual — RF-40).
+- **provider_trial_grants**: provider_id, trial_days, trial_end, target_plan, granted_by, status — espelha `trial_grants` (tabela já existente para `tenants`), usada pelo RF-40.
 - **invoice**: subscription_id, valor, status (`paid`,`failed`,`pending`), paid_at, gateway_transaction_id.
 - **service_contact** (lead): gestor_id, provider_id, category_id, property_id (nullable), mensagem (opcional), canal (`whatsapp`/`telefone`), created_at.
 - **review**: service_contact_id (unique), gestor_id, provider_id, nota (1-5), comentario, resposta_prestador, created_at.
 - **favorite**: gestor_id, provider_id, created_at.
 - **audit_log**: entidade, entidade_id, ação, ator, payload_antes/depois, created_at.
 
-> **Confirmado no código.** `hospedeai-v2` já tem `public.tenants` (id, plan, status, `stripe_customer_id`, `stripe_subscription_id`), `public.users` (complementa `auth.users`, com `tenant_id` e `role` admin/member) e `public.properties` (`tenant_id`, `name`, `address` **em texto livre, sem lat/lng nem campos estruturados de cidade/bairro**, `status` Ativo/Manutenção/Inativo, `rating`, etc.). Ou seja: RF-12 (pré-carregar bairro/cidade do imóvel) não é imediato — hoje não há geocodificação de `properties.address`; é preciso geocodificar sob demanda (dá para reaproveitar a dependência `@googlemaps/js-api-loader` já presente no projeto, no mesmo padrão usado pela feature `guide_nearby_places`) ou pedir a cidade/bairro ao gestor na primeira busca. Também confirmado: `service_provider`/`review`/`favorite` não devem referenciar `tenants` — o prestador é um principal novo, ligado direto a `auth.users(id)`, sem vínculo de tenant (ver seção 10).
+> **Confirmado no código.** `hospedeai-v2` já tem `public.tenants` (id, plan, status, `stripe_customer_id`, `stripe_subscription_id`), `public.users` (complementa `auth.users`, com `tenant_id` e `role` admin/member) e `public.properties` (`tenant_id`, `name`, `address` **em texto livre, sem lat/lng nem campos estruturados de cidade/bairro**, `status` Ativo/Manutenção/Inativo, `rating`, etc.). Decisão da seção 15 (item 7) trouxe a geocodificação de `properties.address` para a Fase 1 — isso implica uma migration **aditiva** na tabela `properties` do produto principal (não só nas tabelas novas do marketplace): novas colunas nullable `lat`, `lng`, `city`, `neighborhood`, preenchidas via geocodificação (reaproveitando `@googlemaps/js-api-loader`, já usado por `guide_nearby_places`) no cadastro/edição do imóvel e via job de backfill para os imóveis já existentes. Por serem nullable e aditivas, não deveriam quebrar nada do que já lê `properties.address` hoje (reservas, portal do hóspede etc.) — mas é uma mudança em tabela de produção já em uso, então precisa ser tratada com o mesmo cuidado de qualquer migration em `properties`/`reservations`. Também confirmado: `service_provider`/`review`/`favorite` não devem referenciar `tenants` — o prestador é um principal novo, ligado direto a `auth.users(id)`, sem vínculo de tenant (ver seção 10).
 
 ---
 
@@ -241,7 +263,10 @@ sequenceDiagram
 stateDiagram-v2
     [*] --> pending_approval
     pending_approval --> active: aprovado + 1º pagamento ok
+    pending_approval --> trialing: aprovado + Admin concede trial (RF-40)
     pending_approval --> rejected: reprovado
+    trialing --> active: trial vira pagamento
+    trialing --> inactive: trial expira sem pagamento
     active --> past_due: falha na cobrança
     past_due --> active: pagamento regularizado
     past_due --> inactive: fim do período de carência
@@ -261,10 +286,12 @@ Esta seção foi reescrita após leitura direta de `renanrba/hospedeai-v2` (cód
 1. **Identidade** — o prestador **não** deve virar uma linha em `public.users` (que hoje sempre carrega `tenant_id` e role admin/member de um tenant). Ele é um principal novo: `service_provider.user_id references auth.users(id)`, autenticado pelo mesmo Supabase Auth, mas sem tenant. Isso também define a regra de RLS: as policies de tenant (`get_auth_tenant_id()`) não se aplicam aqui — precisa de uma função equivalente tipo `is_provider_owner(provider_id)` comparando com `auth.uid()`.
 2. **Leitura pública sem servidor** — como a busca de prestadores é intencionalmente cross-tenant (rede compartilhada) mas **não** envolve segredo nenhum, ela pode seguir o padrão já usado em `guide_nearby_places` (`FOR SELECT USING (true)` para registros ativos) e ser lida direto via `services/` com RLS, sem precisar passar por `api/v1/*`. Só o que envolve Stripe/moderação cross-tenant (aprovação, suspensão, cobrança) precisa de endpoint dedicado.
 3. **Cobrança** — Stripe **já está em produção** no hóspede.ai (`api/v1/billing.js`: `create_checkout_session`, `webhook`, `billingPortal.sessions.create`), cobrando o gestor em BRL com um objeto `PLANS` (free/pro/enterprise) definido em `lib/billing/index.js`. Recomenda-se **espelhar exatamente esse padrão** para o prestador: um objeto `PROVIDER_PLANS` (mensal/anual), Products/Prices próprios no Stripe, um `provider_subscription` análogo a `tenants.stripe_customer_id`/`stripe_subscription_id`, e um handler de webhook separado (ou uma branch dentro do handler existente, discriminando por `metadata` do evento) que atualiza `service_provider.status` em vez de `tenants.plan`. Evita reinventar a idempotência de webhook que já existe.
-4. **Geolocalização** — `@googlemaps/js-api-loader` e `leaflet`/`react-leaflet` já são dependências do projeto e já resolvem geolocalização em produção (feature de "lugares próximos" do guia do hóspede, com lat/lng gravados em `guide_nearby_places`). Reaproveitar o mesmo padrão para: (a) geocodificar a cobertura do prestador (RF-04) e (b) — quando possível — geocodificar `properties.address` sob demanda para popular a busca contextual (RF-12), já que hoje esse campo é texto livre sem lat/lng (seção 8).
+4. **Geolocalização** *(decidido: Fase 1, não Fase 2)* — `@googlemaps/js-api-loader` e `leaflet`/`react-leaflet` já são dependências do projeto e já resolvem geolocalização em produção (feature de "lugares próximos" do guia do hóspede, com lat/lng gravados em `guide_nearby_places`). Reaproveitar o mesmo padrão para: (a) geocodificar a cobertura do prestador (RF-04) e (b) geocodificar `properties.address` — precisa de uma migration aditiva em `properties` (colunas `lat`/`lng`/`city`/`neighborhood`, nullable) mais um job de backfill para os imóveis já cadastrados, já que hoje é texto livre sem coordenadas (seção 8). Vale orçar essa geocodificação em massa contra o limite/custo da API do Google Maps antes de rodar o backfill.
 5. **Navegação** — novo item de menu para o gestor (a `AuthContext` atual só resolve sessão de tenant, então essa é uma tela nova de gestor autenticado); onboarding do prestador fica **fora** desse fluxo, como uma landing pública própria ("Seja um prestador parceiro"), similar em espírito às páginas de `components/products/*` que hoje descrevem os produtos do hóspede.ai para o público externo — mas com fluxo de cadastro + checkout, não só marketing.
 6. **Notificações** — o produto já tem `app.js` (`chat`, `support-chat`, `activities-log`) e um assistente de IA (ARIA); vale avaliar mais adiante se cabe ao ARIA sugerir o módulo quando o gestor relatar um problema em texto ("ar-condicionado quebrado" → sugestão de abrir a busca de prestadores) — não é MVP, mas é um gancho natural de produto já existente.
 7. **Isolamento de schema** — mesmo padrão do resto do banco: migrations dedicadas em `supabase/migrations/`, tabelas novas sem acoplamento a `properties`/`reservations` além da referência opcional `property_id` em `service_contact`. Não requer schema Postgres separado — o projeto já mantém tudo em `public.*` com isolamento por RLS, não por schema.
+8. **Trial de prestador (RF-40)** — o produto já resolveu exatamente esse problema para `tenants`: `components/admin/BillingGrowth/TrialsTab.tsx` busca a conta (via `/api/admin/combo-search`), define dias + plano-alvo, e `POST /api/admin/grant-trial` atualiza `tenants.trial_ends_at`/`status`/`plan` e grava em `trial_grants` (editável/removível na mesma tela, listada via `GET /api/admin/trials`). A recomendação é literalmente **copiar essa tela e esses três endpoints**, trocando `tenants`/`trial_grants` por `service_provider`/`provider_subscription`/`provider_trial_grants` (seção 8) — não é preciso desenhar UX nova, o padrão já existe, já está em produção e já resolve concorrência/edição/remoção de trial.
+9. **Segurança do RLS das tabelas novas** — a Rodada 1 desta análise descobriu, ao implementar o formulário de discovery, que `role = 'admin'` em `public.users` **não é confiável como "é da equipe hóspede.ai"** (é um papel por tenant, e qualquer cliente logado conseguia se auto-atribuir esse role antes do fix aplicado em produção). Toda tabela nova do marketplace que precisar de um gate "só a equipe hóspede.ai" — aprovação de cadastro (RF-35), concessão de trial (RF-40), gestão de categorias/planos (RF-36), moderação de denúncia (RF-39) — deve usar `public.is_current_user_platform_admin()` (já em produção, ver `supabase/migrations/20260829005000_platform_admin_security_fix.sql` no `hospedeai-v2`), nunca `role = 'admin'`.
 
 ---
 
@@ -282,12 +309,12 @@ Esta seção foi reescrita após leitura direta de `renanrba/hospedeai-v2` (cód
 
 | Risco | Impacto | Mitigação |
 |---|---|---|
-| **Cold start** (poucos prestadores no lançamento → gestores não voltam) | Alto | Lançar em 1-2 cidades piloto com curadoria manual/prospecção ativa de prestadores; oferecer trial gratuito nos primeiros meses; recrutar prestadores já indicados informalmente pelos gestores atuais (pesquisa com base de clientes) |
+| **Cold start** (poucos prestadores no lançamento → gestores não voltam) | Alto | Piloto em **João Pessoa/PB** (decidido) com curadoria manual/prospecção ativa de prestadores; **trial gratuito** já decidido como ferramenta de lançamento (RF-40); recrutar prestadores já indicados informalmente pelos ~1.000 gestores hóspede.ai na região (pesquisa com base de clientes) |
 | **Avaliações falsas/manipuladas** | Médio | Exigir contato registrado antes de avaliar (RF-21); rate limit de avaliações por gestor/prestador; moderação reativa por denúncia |
 | **Prestador fantasma/golpe** (cobra e não aparece) | Alto (reputacional) | Moderação de cadastro na Fase 1; canal de denúncia visível; suspensão rápida por Admin |
 | **Concorrência de marketplaces genéricos** (GetNinjas etc.) | Médio | Diferencial = rede fechada e contextualizada ao imóvel/urgência de temporada, não é preciso vencer no volume, só na relevância para esse nicho |
 | **Baixo ARPU / churn de prestador sem leads suficientes** | Médio | Painel do prestador com métricas de visualização/contato (mostrar valor); plano de destaque pago como upsell, não como barreira de entrada |
-| **Sazonalidade regional** (poucas cidades com massa crítica) | Médio | MVP com foco geográfico deliberado (cidades onde já há concentração de gestores hóspede.ai) |
+| **Sazonalidade regional** (poucas cidades com massa crítica) | Médio | MVP com foco geográfico deliberado em João Pessoa (bairros turísticos de alta ocupação: Manaíra, Tambaú, Cabo Branco, Bessa), onde já há concentração de gestores hóspede.ai |
 | **Responsabilidade legal por serviço malfeito** | Alto se mal contratualizado | Termos de uso claros (seção 11) + disclaimer visível nas telas de contato |
 
 ---
@@ -309,32 +336,35 @@ Esta seção foi reescrita após leitura direta de `renanrba/hospedeai-v2` (cód
 
 | Fase | Escopo | Estimativa |
 |---|---|---|
-| Fase 0 — Discovery | Entrevistas, definição de categorias/preços/cidades piloto | 1-2 semanas |
-| Fase 1 — MVP | Cadastro, catálogo, busca simples, contato, avaliação, 1 gateway, admin básico | 6-8 semanas (1 squad full-stack) |
-| Fase 2 — Growth | Geolocalização, plano anual, destaque pago, notificações automáticas, painel de métricas do prestador | 4-6 semanas |
-| Fase 3 — Futuro | Chat interno, orçamento estruturado, agenda de disponibilidade, app do prestador | A avaliar após tração do MVP |
+| Fase 0 — Discovery | ✅ Decisões macro já tomadas; falta validar preço/categorias com entrevistas reais em João Pessoa | Concluída / validação leve em paralelo à Fase 1 |
+| Fase 1 — MVP | Cadastro, catálogo, geocodificação (properties + cobertura do prestador), busca, contato, avaliação, Stripe (mensal/anual), trial via Admin (RF-40), aprovação manual de cadastro | 8-11 semanas (1 squad full-stack) — maior que um MVP mínimo porque geolocalização e trial entraram na Fase 1 por decisão de produto |
+| Fase 2 — Growth | Destaque pago, notificações automáticas, painel de métricas do prestador, verificação documental reforçada | 3-4 semanas |
+| Fase 3 — Futuro | Chat interno, orçamento estruturado, agenda de disponibilidade, app do prestador | A avaliar após tração do piloto em João Pessoa |
 
 (Estimativas grosseiras para dimensionamento de negócio; refinar em planning técnico quando a decisão de implementar for tomada.)
 
 ---
 
-## 15. Perguntas em aberto para a próxima rodada
+## 15. Decisões registradas (Rodada 2) e o que ainda falta
 
-Respondidas nesta revisão, com base no código de `hospedeai-v2` (removidas da lista): existe auth/base de usuários reaproveitável (Supabase Auth); existe gateway de pagamento em uso (Stripe, já cobrando em BRL); existe base de geolocalização no stack (Google Maps + Leaflet). Seguem em aberto, porque dependem de decisão de produto ou de algo que não dá para confirmar só lendo o código:
+### Decididas
 
-1. **PIX/boleto no Stripe** — o checkout atual não declara `payment_method_types` explícito no código revisado. Isso depende de configuração da conta Stripe (dashboard), não do código. Precisa confirmar se boleto/PIX já estão habilitados, ou se será preciso ativá-los/complementar com outro meio de pagamento para agradar o público autônomo/MEI.
-2. Moderação de cadastro será **prévia** (aprovação manual antes de aparecer) ou **reativa** (aparece direto, moderação só por denúncia)? Isso muda bastante o esforço operacional inicial.
-3. Quais cidades/regiões fazem sentido para o piloto, com base na concentração atual de gestores hóspede.ai (dado que não temos acesso a métricas de uso/base de tenants por região)?
-4. Faixa de preço da assinatura do prestador (mensal e anual) — já existe uma hipótese, ou parte de pesquisa de mercado (GetNinjas Profissionais, Houzz Pro etc.)?
-5. Haverá período de trial gratuito para os primeiros prestadores (estratégia de cold start)?
-6. O prestador poderá ser, ao mesmo tempo, gestor de imóveis (dupla persona)? O modelo de dados proposto (seção 8) já assume que não — prestador é um principal separado, sem `tenant_id` — mas vale confirmar se isso bloqueia algum caso de uso real (ex.: um gestor que também presta serviço para outros gestores).
-7. Vale a pena investir, ainda na Fase 1, em geocodificar `properties.address` (hoje texto livre) para viabilizar o RF-12 completo, ou o MVP pode pedir cidade/bairro manualmente ao gestor na primeira busca e deixar a geocodificação automática para a Fase 2?
+2. **Moderação de cadastro: prévia.** Aprovação manual — um Admin faz o cross-check das informações antes do prestador ficar visível (RF-06, RF-35, fluxo 9.1).
+3. **Cidade piloto: João Pessoa/PB.** Base de referência: ~1.000 gestores hóspede.ai na região, 3–10 flats cada (frota estimada de 3.000–10.000 imóveis), concentração em bairros turísticos de alta ocupação (Manaíra, Tambaú, Cabo Branco, Bessa) — volume de turnover relevante para sustentar o marketplace.
+5. **Trial gratuito: sim, concedido pelo Admin.** Nova funcionalidade (RF-40) espelhando `Suporte Admin → Billing Growth → Trials` já existente no produto para `tenants` — mesma tela, mesmo padrão de endpoints, aplicado a prestadores (seção 10, item 8).
+6. **Sem dupla persona.** Gestor e prestador são sempre contas separadas, mesmo para a mesma pessoa física (regra de negócio 8, seção 6).
+7. **Geocodificação de `properties.address`: sim, já na Fase 1.** RF-04 e RF-12 saem completos desde o MVP, não como fallback manual (seção 4, seção 8, seção 10 item 4). Implica uma migration aditiva na tabela `properties` do produto principal (não só nas tabelas novas do marketplace) e um job de backfill para os imóveis já existentes.
+
+### Ainda em aberto
+
+1. **PIX/boleto no Stripe** — segue em aberto por decisão explícita (nada bloqueia começar a construir a assinatura só com cartão e adicionar boleto/PIX depois; mas vale decidir antes do lançamento em João Pessoa, dado o público autônomo/MEI).
+4. **Estrutura de preço do prestador** — proposta inicial na seção 5.6.1 (tiers Essencial/Profissional/Premium, R$ 39,90–R$ 149,90/mês), mas a estrutura em si está em aberto: preço único fixo (mais simples) vs. tiers por porte/categoria (capta mais valor, mais complexo de operar e de comunicar). Recomendação: aplicar as perguntas 10–11 do questionário de discovery (`docs/questionario-discovery-fase0.md`) em uma amostra real de prestadores de João Pessoa antes de travar os valores — a proposta atual é uma hipótese de mercado, não dado de campo.
 
 ---
 
 ## 16. Próximos passos sugeridos
 
-1. Validar este documento e responder às perguntas da seção 15.
-2. Rodar Fase 0 (discovery) com uma amostra pequena de gestores e prestadores reais.
-3. Prototipar wireframes das telas críticas: cadastro do prestador, busca do gestor, perfil público, fluxo de avaliação.
-4. Só então detalhar o plano técnico de implementação (schema definitivo, escolha de gateway, escolha de abordagem de geolocalização) para a Fase 1.
+1. Fechar os dois pontos ainda em aberto da seção 15 (PIX/boleto, estrutura de preço) — o segundo se beneficia de aplicar o questionário de discovery numa amostra real de prestadores/gestores de João Pessoa antes de travar os valores.
+2. Prototipar wireframes das telas críticas: cadastro do prestador (com geocodificação da cobertura), busca do gestor (com pré-preenchimento do imóvel), perfil público, fluxo de avaliação, tela de trial no Admin (RF-40).
+3. Detalhar o plano técnico da Fase 1: schema definitivo (seção 8), migration aditiva de geocodificação em `properties` + estratégia de backfill (seção 10, item 4), Products/Prices no Stripe para os planos de prestador (seção 10, item 3), e a réplica de `TrialsTab`/`grant-trial` para prestadores (seção 10, item 8).
+4. Rodar a aprovação/cadastro dos primeiros prestadores de João Pessoa manualmente (curadoria direta) antes de abrir o cadastro público, para já nascer com massa crítica visível para os primeiros gestores.
