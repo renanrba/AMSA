@@ -1,6 +1,6 @@
 # Estudo de Viabilidade — Conecta Prestadores (Marketplace de Manutenção e Serviços Operacionais) para hóspede.ai
 
-**Status:** Rodada 5 — catálogo de categorias reestruturado em 12 grupos/46 subcategorias orientadas à operação de temporada (RF-09), com expansão deliberada de escopo para hospitality/apoio operacional. Rodada 4: módulo renomeado para **Conecta Prestadores** (era "Comunidade de Prestadores"); métricas no Admin, upload de documentos no cadastro, disponibilidade/horários como filtro, cobertura em cascata (estado → cidade → bairros)
+**Status:** Rodada 6 — estratégias de validação de reviews sem confirmação de pagamento (confirmação não bloqueante do prestador, badge "Verificado", evidência opcional, contador de trabalhos concluídos, sinalização automática para moderação, denúncia estruturada e badge de KYC). Rodada 5: catálogo de categorias reestruturado em 12 grupos/48 subcategorias orientadas à operação de temporada (RF-09). Rodada 4: módulo renomeado para **Conecta Prestadores** (era "Comunidade de Prestadores"); métricas no Admin, upload de documentos no cadastro, disponibilidade/horários como filtro, cobertura em cascata (estado → cidade → bairros)
 **Data:** 2026-08-29
 **Autor:** Claude Code (a pedido de Renan)
 **Objetivo deste documento:** consolidar a ideia descrita, avaliar viabilidade, e especificar requisitos funcionais, não funcionais, modelo de dados, fluxos e pontos de integração — para servir de base à próxima rodada de análise e à decisão de implementação.
@@ -97,25 +97,30 @@ Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 
 - **RF-12** *(completo já na Fase 1)* Ponto de entrada contextual: dentro da tela de um imóvel específico, botão "Preciso de um profissional" que já pré-carrega bairro/cidade do imóvel — viável desde o início porque `properties.address` passa a ser geocodificado (ver seção 10, item 4, e seção 15, item 7).
 - **RF-13** Ponto de entrada geral: módulo **"Conecta Prestadores"** no menu, com busca livre por categoria + localidade.
 - **RF-14** Resultado lista prestadores **ativos** (assinatura em dia) na região, com: nome, foto, categorias, nota média, nº de avaliações, preço base, distância/bairro, selo "destaque" (se plano premium).
-- **RF-15** Ordenação padrão: relevância (combinação de nota média, nº de avaliações, proximidade, prestadores em destaque pagos) — critério exato a definir na Fase 2.
+- **RF-15** Ordenação padrão: relevância (combinação de nota média, nº de avaliações, proximidade, **taxa de confirmação de contatos pelo prestador — RF-44** e prestadores em destaque pagos) — critério exato a definir na Fase 2. A taxa de confirmação entra só como fator de ranqueamento, não como um badge visível adicional (evita um 3º selo competindo com o de plano — 5.6.1 — e o de verificação — RF-48).
 - **RF-16** Filtros: categoria, bairro/cidade, nota mínima, faixa de preço, **disponibilidade** (24h / fins de semana / feriados — RF-43).
 - **RF-17** Página de perfil público do prestador: bio, categorias, preços, portfólio, avaliações completas (com resposta do prestador, se houver), botão de contato.
 
 ### 5.4 Contato / geração de chamado
 
 - **RF-18** Botão "Contatar" abre WhatsApp (link `wa.me`) ou exibe telefone — a conversa em si ocorre fora da plataforma.
-- **RF-19** Cada clique em "Contatar" gera um registro interno de **lead/contato** (gestor → prestador, categoria, imóvel opcional, timestamp), usado para: (a) habilitar avaliação futura, (b) métricas para o prestador, (c) analytics do módulo.
+- **RF-19** Cada clique em "Contatar" gera um registro interno de **lead/contato** (gestor → prestador, categoria, imóvel opcional, timestamp), usado para: (a) habilitar avaliação futura, (b) contar como "trabalho" no perfil do prestador (RF-46), (c) métricas para o prestador, (d) analytics do módulo.
 - **RF-20** (Fase 2) Opcional: formulário curto "Descreva o problema" antes de contatar, para o prestador já chegar com contexto (pode virar mensagem pré-formatada no WhatsApp).
+- **RF-44** *(novo — rodada 6)* **Confirmação do prestador (não bloqueante).** Alguns dias após o contato, o prestador recebe uma notificação "Você atendeu [Gestor]? Confirme para valorizar seu perfil" e pode confirmar o serviço em 1 clique. A confirmação **não é pré-requisito para a review do gestor ser publicada** (isso criaria fricção justo no cold start, o maior risco do módulo — seção 12) — ela só faz o contato virar `confirmed` e, se já existir review para aquele contato, essa review ganha o badge **"Verificado"** (RF-45). Sem resposta do prestador em 7 dias, o contato permanece `unconfirmed` e a review do gestor segue publicada normalmente, sem o badge extra.
 
 ### 5.5 Avaliações e reputação
 
 - **RF-21** Gestor só pode avaliar um prestador com quem tenha um registro de contato (RF-19) prévio — evita reviews falsas de quem nunca usou.
-- **RF-22** Avaliação = nota 1-5 estrelas + comentário opcional + (opcional) tags rápidas ("pontual", "preço justo", "resolveu de primeira").
+- **RF-22** Avaliação = nota 1-5 estrelas + comentário opcional + (opcional) tags rápidas ("pontual", "preço justo", "resolveu de primeira") + **(novo — rodada 6) foto opcional de evidência** (do serviço feito ou de comprovante) — anexo simples, sem exigir formato específico.
 - **RF-23** Sistema envia, alguns dias após o contato, uma notificação/prompt "Você contratou [Prestador]? Avalie o atendimento" (RF-33).
 - **RF-24** Prestador pode responder publicamente a uma avaliação (uma vez, sem editar a nota).
 - **RF-25** Nota média e contagem de avaliações exibidas no perfil e nos resultados de busca; recalculadas a cada nova avaliação.
 - **RF-26** Gestor pode favoritar prestadores ("meus preferidos") para acesso rápido futuro.
-- **RF-27** Denúncia de avaliação abusiva/perfil falso, encaminhada para moderação do Admin.
+- **RF-27** *(detalhado — rodada 6)* Denúncia de avaliação abusiva/perfil falso, com **motivo estruturado** (não contratei este prestador / review falso ou fake / conflito de interesse / linguagem inadequada / outro) + campo livre opcional, encaminhada para a fila de moderação do Admin (RF-39). Denúncia procedente pode gerar: aviso ao autor da review → remoção da review → suspensão do gestor/prestador, conforme gravidade (ver regra de negócio 10).
+- **RF-45** *(novo — rodada 6)* Badge **"Verificado"** na review: aparece quando o contato correspondente foi confirmado pelo prestador (RF-44) — sinal de maior confiança que não depende de comprovar pagamento, já que a plataforma não intermedeia a transação (seção 2).
+- **RF-46** *(novo — rodada 6)* Perfil e card de busca exibem **"X trabalhos concluídos"**: contagem de `service_contact` do prestador (RF-19), não só de reviews — dá transparência sobre volume real de atividade mesmo quando a maioria dos contatos nunca vira review (typical em marketplaces sem pagamento intermediado). Exibido ao lado da nota média/contagem de reviews (RF-25), não no lugar dela.
+- **RF-47** *(novo — rodada 6)* **Sinalização automática (não bloqueante) de reviews suspeitas**, alimentando a fila de denúncias do Admin (RF-39) como itens pré-triados, nunca removendo ou ocultando a review sozinha (heurística tem falso positivo — ex. um chamado rápido de troca de lâmpada legitimamente gera review curta e rápida). Heurísticas sugeridas: tempo entre contato e review menor que ~2h; comentário genérico (menos de 20 caracteres) com nota 5; mesmo gestor avaliando o mesmo prestador mais de uma vez; gestor com uma única review na conta e nota 5 (perfil novo).
+- **RF-48** *(novo — rodada 6)* Badge **"Prestador Verificado"**, distinto do selo de plano pago (Equipe/Empresa verificada, seção 5.6.1) — um eixo é confiança, o outro é monetização, e não devem se misturar (mesmo cuidado já aplicado à separação porte × categoria). Critério: CPF/CNPJ validado + aprovação manual do Admin (RF-06) + documentos de verificação aprovados (RF-42) + telefone confirmado por OTP (já previsto na seção 11) — já é essencialmente o que RF-06/RF-42 exigem para o prestador virar `active`; este RF só torna esse conjunto de critérios um selo visível explícito no perfil e nos resultados de busca.
 
 ### 5.6 Assinatura e cobrança do prestador
 
@@ -146,7 +151,7 @@ Uma segunda versão trazia limite de bairros/raio dentro de João Pessoa como di
 
 ### 5.7 Notificações
 
-- **RF-33** Notificar prestador: novo lead/contato recebido, avaliação recebida, assinatura próxima do vencimento, pagamento falhou, conta suspensa/reativada.
+- **RF-33** Notificar prestador: novo lead/contato recebido, avaliação recebida, **pedido de confirmação de serviço (RF-44)**, assinatura próxima do vencimento, pagamento falhou, conta suspensa/reativada.
 - **RF-34** Notificar gestor: prompt de avaliação pós-contato, resposta do prestador à sua avaliação.
 
 ### 5.8 Painel administrativo (Admin)
@@ -176,6 +181,7 @@ Uma segunda versão trazia limite de bairros/raio dentro de João Pessoa como di
 7. O hóspede.ai não é parte na relação comercial do serviço contratado — apenas plataforma de descoberta e reputação (ver seção 11, aspectos legais).
 8. *(decidido, seção 15 item 6)* Gestor e prestador são **sempre contas separadas**, mesmo quando a mesma pessoa física atua nos dois papéis (ex.: um gestor que também presta serviço para outros gestores) — sem conta híbrida/dupla persona. Precisa de dois logins distintos (podem usar o mesmo e-mail em contas diferentes, a depender de como o Supabase Auth for configurado, mas nunca uma sessão só que alterna entre os dois papéis).
 9. *(decidido, seção 5.6.1)* O tier de assinatura elegível é determinado pelo cadastro (CNPJ informado ou "múltiplos funcionários" declarado bloqueia o plano Autônomo/Individual) — evita que um prestador de porte maior se autodeclare no plano mais barato.
+10. *(novo — rodada 6, RF-27/RF-47)* Denúncia procedente de review segue escalada progressiva: 1ª ocorrência gera aviso ao autor; reincidência remove a review; violação grave (review fabricada, colusão) suspende a conta do autor. Sinalização automática (RF-47) nunca aplica penalidade sozinha — sempre passa por moderação humana do Admin antes de qualquer ação.
 
 ---
 
@@ -214,6 +220,7 @@ erDiagram
     SERVICE_CONTACT ||--o| REVIEW : habilita
     GESTOR ||--o{ REVIEW : escreve
     SERVICE_PROVIDER ||--o{ REVIEW : recebe
+    REVIEW ||--o{ REVIEW_REPORT : "pode ser denunciada em"
     GESTOR ||--o{ FAVORITE : marca
     SERVICE_PROVIDER ||--o{ FAVORITE : "é favoritado"
     PROPERTY ||--o{ SERVICE_CONTACT : "opcionalmente associado a"
@@ -235,10 +242,13 @@ erDiagram
 - **provider_trial_grants**: provider_id, trial_days, trial_end, target_plan, granted_by, status — espelha `trial_grants` (tabela já existente para `tenants`), usada pelo RF-40.
 - **provider_members**: provider_id, nome, foto_url (opcional), created_at — membros de equipe vinculados ao perfil, limitados pelo plano (RF-41, seção 5.6.1).
 - **invoice**: subscription_id, valor, status (`paid`,`failed`,`pending`), paid_at, gateway_transaction_id.
-- **service_contact** (lead): gestor_id, provider_id, category_id, property_id (nullable), mensagem (opcional), canal (`whatsapp`/`telefone`), created_at.
-- **review**: service_contact_id (unique), gestor_id, provider_id, nota (1-5), comentario, resposta_prestador, created_at.
+- **service_contact** (lead): gestor_id, provider_id, category_id, property_id (nullable), mensagem (opcional), canal (`whatsapp`/`telefone`), **confirmed_by_provider (bool, default false — RF-44), confirmed_at (nullable)**, created_at.
+- **review**: service_contact_id (unique), gestor_id, provider_id, nota (1-5), comentario, resposta_prestador, **evidence_url (nullable — RF-22/RF-45), verified (bool, computado de `service_contact.confirmed_by_provider` — RF-45), flagged_reason (nullable, preenchido por heurística — RF-47)**, created_at.
+- **review_report**: id, review_id (fk), reporter_id, motivo (`nao_contratei`/`review_falso`/`conflito_interesse`/`linguagem_inadequada`/`outro`), detalhe (opcional), status (`pending`/`reviewed`/`dismissed`), resolved_by (nullable), resolved_at (nullable), created_at — **novo, rodada 6**, suporta a denúncia estruturada do RF-27 e alimenta a fila do RF-39.
 - **favorite**: gestor_id, provider_id, created_at.
 - **audit_log**: entidade, entidade_id, ação, ator, payload_antes/depois, created_at.
+
+> **Nota — rodada 6.** `completed_contacts_count` (RF-46, "X trabalhos concluídos") e `confirmation_rate` (RF-15) não são colunas armazenadas em `service_provider` — são calculados sob demanda a partir de `service_contact` (contagem total e proporção `confirmed_by_provider = true`), para evitar campo denormalizado que precisa de trigger/job para não ficar desatualizado. Cachear como coluna só se a query virar gargalo de performance real (RNF de performance, seção 7).
 
 > **Confirmado no código.** `hospedeai-v2` já tem `public.tenants` (id, plan, status, `stripe_customer_id`, `stripe_subscription_id`), `public.users` (complementa `auth.users`, com `tenant_id` e `role` admin/member) e `public.properties` (`tenant_id`, `name`, `address` **em texto livre, sem lat/lng nem campos estruturados de cidade/bairro**, `status` Ativo/Manutenção/Inativo, `rating`, etc.). Decisão da seção 15 (item 7) trouxe a geocodificação de `properties.address` para a Fase 1 — isso implica uma migration **aditiva** na tabela `properties` do produto principal (não só nas tabelas novas do marketplace): novas colunas nullable `lat`, `lng`, `city`, `neighborhood`, preenchidas via geocodificação (reaproveitando `@googlemaps/js-api-loader`, já usado por `guide_nearby_places`) no cadastro/edição do imóvel e via job de backfill para os imóveis já existentes. Por serem nullable e aditivas, não deveriam quebrar nada do que já lê `properties.address` hoje (reservas, portal do hóspede etc.) — mas é uma mudança em tabela de produção já em uso, então precisa ser tratada com o mesmo cuidado de qualquer migration em `properties`/`reservations`. Também confirmado: `service_provider`/`review`/`favorite` não devem referenciar `tenants` — o prestador é um principal novo, ligado direto a `auth.users(id)`, sem vínculo de tenant (ver seção 10).
 
@@ -285,8 +295,18 @@ sequenceDiagram
     S-->>Ge: Abre WhatsApp/telefone do prestador
     Ge--)Pr: Conversa e negociação (fora da plataforma)
     S->>Ge: (dias depois) "Avalie o atendimento"
-    Ge->>S: Envia nota + comentário
-    S->>S: Atualiza rating_avg do prestador
+    Ge->>S: Envia nota + comentário (+ evidência opcional)
+    S->>S: Publica review, atualiza rating_avg do prestador
+    par Confirmação do prestador (RF-44, não bloqueante)
+        S->>Pr: "Você atendeu [Gestor]? Confirme"
+        alt Prestador confirma em até 7 dias
+            Pr->>S: Confirma o contato
+            S->>S: service_contact.confirmed_by_provider = true
+            S->>S: Review vira "Verificado" (RF-45)
+        else Sem resposta em 7 dias
+            S->>S: Contato permanece unconfirmed — review já publicada segue sem o badge
+        end
+    end
 ```
 
 ### 9.3 Inadimplência e reativação
@@ -343,7 +363,7 @@ Esta seção foi reescrita após leitura direta de `renanrba/hospedeai-v2` (cód
 | Risco | Impacto | Mitigação |
 |---|---|---|
 | **Cold start** (poucos prestadores no lançamento → gestores não voltam) | Alto | Piloto em **João Pessoa/PB** (decidido) com curadoria manual/prospecção ativa de prestadores; **trial gratuito** já decidido como ferramenta de lançamento (RF-40); recrutar prestadores já indicados informalmente pelos ~1.000 gestores hóspede.ai na região (pesquisa com base de clientes) |
-| **Avaliações falsas/manipuladas** | Médio | Exigir contato registrado antes de avaliar (RF-21); rate limit de avaliações por gestor/prestador; moderação reativa por denúncia |
+| **Avaliações falsas/manipuladas** | Médio | Exigir contato registrado antes de avaliar (RF-21); rate limit de avaliações por gestor/prestador; badge "Verificado" via confirmação do prestador (RF-44/45); evidência opcional (RF-22); sinalização automática alimentando moderação humana (RF-47); denúncia estruturada com escalada progressiva (RF-27, regra 10) |
 | **Prestador fantasma/golpe** (cobra e não aparece) | Alto (reputacional) | Moderação de cadastro na Fase 1; canal de denúncia visível; suspensão rápida por Admin |
 | **Concorrência de marketplaces genéricos** (GetNinjas etc.) | Médio | Diferencial = rede fechada e contextualizada ao imóvel/urgência de temporada, não é preciso vencer no volume, só na relevância para esse nicho |
 | **Baixo ARPU / churn de prestador sem leads suficientes** | Médio | Painel do prestador com métricas de visualização/contato (mostrar valor); plano de destaque pago como upsell, não como barreira de entrada |
@@ -362,6 +382,9 @@ Esta seção foi reescrita após leitura direta de `renanrba/hospedeai-v2` (cód
 - Churn mensal de assinaturas de prestador
 - Tempo médio entre cadastro do prestador e primeiro lead recebido (mostra "time to value")
 - % de gestores ativos que já usaram o módulo ao menos uma vez (adoção)
+- *(novo — rodada 6)* Taxa de confirmação de contatos pelo prestador (RF-44): `confirmed_by_provider` / total de `service_contact`
+- *(novo — rodada 6)* % de reviews com badge "Verificado" (RF-45) sobre o total de reviews publicadas
+- *(novo — rodada 6)* Volume de denúncias procedentes vs. improcedentes (RF-27/RF-39) — sinal de saúde da moderação
 
 ---
 
