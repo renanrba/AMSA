@@ -1,6 +1,6 @@
-# Estudo de Viabilidade — Conecta Prestadores (Marketplace de Manutenção) para hóspede.ai
+# Estudo de Viabilidade — Conecta Prestadores (Marketplace de Manutenção e Serviços Operacionais) para hóspede.ai
 
-**Status:** Rodada 4 — módulo renomeado para **Conecta Prestadores** (era "Comunidade de Prestadores"); adiciona métricas no Admin, upload de documentos no cadastro, disponibilidade/horários como filtro, catálogo de categorias ampliado e cobertura em cascata (estado → cidade → bairros)
+**Status:** Rodada 5 — catálogo de categorias reestruturado em 12 grupos/46 subcategorias orientadas à operação de temporada (RF-09), com expansão deliberada de escopo para hospitality/apoio operacional. Rodada 4: módulo renomeado para **Conecta Prestadores** (era "Comunidade de Prestadores"); métricas no Admin, upload de documentos no cadastro, disponibilidade/horários como filtro, cobertura em cascata (estado → cidade → bairros)
 **Data:** 2026-08-29
 **Autor:** Claude Code (a pedido de Renan)
 **Objetivo deste documento:** consolidar a ideia descrita, avaliar viabilidade, e especificar requisitos funcionais, não funcionais, modelo de dados, fluxos e pontos de integração — para servir de base à próxima rodada de análise e à decisão de implementação.
@@ -59,7 +59,7 @@ Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 
 ### 5.1 Cadastro e perfil do prestador
 
 - **RF-01** O prestador deve poder se cadastrar de forma independente do fluxo de gestor (landing page própria "Seja um prestador parceiro"), informando: nome/razão social, CPF ou CNPJ, telefone (WhatsApp), e-mail, foto/logo, descrição livre (bio), anos de experiência (opcional).
-- **RF-02** O prestador deve selecionar **uma ou mais categorias de serviço** (ver 5.2) dentre um catálogo controlado pelo hóspede.ai (não texto livre, para permitir busca estruturada).
+- **RF-02** *(atualizado — rodada 5: catálogo em 2 níveis)* O prestador deve selecionar **uma ou mais subcategorias de serviço** (ver 5.2) dentre um catálogo controlado pelo hóspede.ai, organizado em **grupos** (ex.: "Manutenção Predial e Reparos") contendo cada um várias **subcategorias** selecionáveis (ex.: Elétrica, Hidráulica, Pintura) — não texto livre, para permitir busca estruturada. A subcategoria é o nível efetivamente salvo em `provider_service`/usado na busca; o grupo é só organização visual (cadastro em acordeão por grupo, RF-11).
 - **RF-03** Para cada categoria, o prestador informa um **preço base** e a unidade (visita/hora/m²/orçamento sob consulta) — apenas referencial, não vinculante.
 - **RF-04** *(escopo ampliado para a Fase 1 — rodada 4: seleção em cascata)* O prestador define sua **área de cobertura** escolhendo **estado → cidade** (dropdowns dependentes) e, após selecionar a cidade, o sistema exibe **todos os bairros cadastrados daquela cidade** para seleção múltipla — em vez de um campo de texto livre. Cada bairro/cidade fica associado a lat/lng geocodificado (ver seção 15, item 7), viabilizando busca por proximidade. O catálogo de cidades/bairros começa restrito a João Pessoa/PB (piloto), mas a estrutura já suporta outras cidades sem redesenho — pré-requisito para expansão futura.
 - **RF-05** O prestador pode anexar até N fotos de trabalhos anteriores (portfólio) — opcional no MVP.
@@ -71,9 +71,26 @@ Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 
 
 ### 5.2 Catálogo de categorias de serviço
 
-- **RF-09** *(catálogo ampliado — rodada 4)* Catálogo inicial sugerido (editável pelo Admin, RF-11): Elétrica, Hidráulica/Encanador, Ar-condicionado/Refrigeração, Limpeza/Faxina, Chaveiro, Marido de aluguel/Manutenção geral, Pintura, Jardinagem/Piscina, Dedetização/Controle de pragas, Gás (botijão/instalação), Montagem de móveis, Internet/Wi-Fi/TV, **Lavanderia**, **Vidraçaria**, **Marcenaria**, **Segurança/CFTV**, **Reforma/Alvenaria**, **Tapeçaria/Estofados**.
-- **RF-10** Cada categoria tem ícone, nome e descrição curta usada na busca ("Estou com problema no ar-condicionado" → mapeia para a categoria).
-- **RF-11** Admin pode criar, renomear, arquivar (nunca excluir, para não quebrar histórico) categorias.
+- **RF-09** *(catálogo reestruturado — rodada 5: 2 níveis, orientado à operação de temporada)* O catálogo deixa de ser uma lista plana e passa a ter **12 grupos**, cada um com suas subcategorias (46 no total), pensados para cobrir todo o ciclo operacional de um imóvel de temporada — não só manutenção reativa. Editável pelo Admin (RF-11) em ambos os níveis.
+
+  | Grupo | Subcategorias |
+  |---|---|
+  | 1. Limpeza e Housekeeping *(essencial)* | Limpeza de Turnover, Limpeza Profunda, Lavanderia, Organização |
+  | 2. Manutenção Predial e Reparos | Elétrica, Hidráulica, Marcenaria, Pintura, Reparos Gerais |
+  | 3. Climatização e Conforto | Ar-condicionado, Ventilação, Aquecimento |
+  | 4. Piscina e Área Externa | Limpeza de Piscina, Manutenção de Piscina, Jardinagem, Área Externa |
+  | 5. Eletrodomésticos e Equipamentos | Linha Branca, TV e Entretenimento, Pequenos Eletros |
+  | 6. Segurança e Tecnologia | Fechaduras e Acessos, Câmeras e Monitoramento, Alarmes, Internet e Wi-Fi, Automação Residencial |
+  | 7. Controle de Pragas e Dedetização | Dedetização, Desratização, Descupinização, Controle de Mosquitos |
+  | 8. Hospitality e Experiência do Hóspede | Reposição de Amenities, Welcome Kit, Concierge, Enxoval e Decoração |
+  | 9. Inspeção e Vistoria | Vistoria de Entrada, Vistoria de Saída, Inspeção Periódica, Laudo Técnico |
+  | 10. Mudança e Logística | Frete e Transporte, Armazenamento, Montagem e Desmontagem |
+  | 11. Serviços Especializados | Chaveiro 24h, Vidraçaria, Serralheria, Impermeabilização, Telhado e Calhas |
+  | 12. Serviços Administrativos e Suporte | Fotografia, Anúncios e Listing, Tradução, Contabilidade |
+
+  > **Nota de escopo.** Os grupos 8 e 12 trazem um perfil de prestador diferente de "mão de obra" (eletricista, encanador etc.): reposição de amenities, concierge, fotografia de listing, tradução, contabilidade são **serviços de apoio operacional e hospitality**, não manutenção física. É uma expansão de escopo deliberada do marketplace — de "conserto de imóvel" para "tudo que o gestor terceiriza na operação" — que usa o mesmo fluxo de cadastro/aprovação/cobrança (RF-01–RF-08), sem exigir nada estrutural adicional. Vale revisitar o texto de RF-01/onboarding para não soar só para "prestador de manutenção" quando o público final é mais amplo.
+- **RF-10** Cada subcategoria tem ícone, nome e descrição curta usada na busca ("Estou com problema no ar-condicionado" → mapeia para a subcategoria "Ar-condicionado", dentro do grupo "Climatização e Conforto").
+- **RF-11** Admin pode criar, renomear, arquivar (nunca excluir, para não quebrar histórico) grupos e subcategorias, e reordenar subcategorias dentro de um grupo.
 
 ### 5.3 Busca e descoberta (lado do gestor)
 
@@ -186,6 +203,7 @@ Uma segunda versão trazia limite de bairros/raio dentro de João Pessoa como di
 erDiagram
     USER ||--o| SERVICE_PROVIDER : "pode ser"
     SERVICE_PROVIDER ||--o{ PROVIDER_SERVICE : oferece
+    SERVICE_CATEGORY_GROUP ||--o{ SERVICE_CATEGORY : agrupa
     SERVICE_CATEGORY ||--o{ PROVIDER_SERVICE : classifica
     SERVICE_PROVIDER ||--o{ COVERAGE_AREA : atende
     SERVICE_PROVIDER ||--o{ PROVIDER_SUBSCRIPTION : assina
@@ -206,7 +224,8 @@ erDiagram
 ### Entidades principais
 
 - **service_provider**: id, user_id (fk auth), nome/razão social, tipo_pessoa (`PF`/`PJ`), documento (cpf/cnpj), telefone, email, bio, avatar_url, status (`pending_approval`, `active`, `past_due`, `inactive`, `suspended`), rating_avg, rating_count, disponibilidade_24h (bool), atende_fins_semana (bool), atende_feriados (bool), created_at, approved_at.
-- **service_category**: id, nome, slug, ícone, ativo (bool).
+- **service_category_group**: id, nome, ícone, ordem — os 12 grupos do catálogo (RF-09), só organização visual/administrativa.
+- **service_category**: id, group_id (fk `service_category_group`), nome, slug, ícone, ativo (bool) — as 46 subcategorias; é este id que `provider_service` referencia (nível efetivamente buscável/salvo, RF-02).
 - **provider_service**: provider_id, category_id, preco_base, unidade_preco, descricao.
 - **provider_documents**: provider_id, tipo (`cpf_rg`, `cnpj`), arquivo_url, status (`pending`, `approved`, `rejected`), created_at — **privado**, nunca exposto no perfil público, só legível por `is_current_user_platform_admin()` (RF-42).
 - **coverage_area**: provider_id, city_id (fk `cities`), bairro (fk/nome do bairro dentro da cidade), lat/lng + raio_km — *geocodificado desde a Fase 1* (decisão da seção 15, item 7; antes cogitado só para a Fase 2).
