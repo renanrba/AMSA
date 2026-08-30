@@ -71,7 +71,7 @@ Este documento cobre principalmente **Fase 1 e 2** em detalhe, e lista a Fase 3 
 
 ### 5.2 Catálogo de categorias de serviço
 
-- **RF-09** *(catálogo reestruturado — rodada 5: 2 níveis, orientado à operação de temporada)* O catálogo deixa de ser uma lista plana e passa a ter **12 grupos**, cada um com suas subcategorias (46 no total), pensados para cobrir todo o ciclo operacional de um imóvel de temporada — não só manutenção reativa. Editável pelo Admin (RF-11) em ambos os níveis.
+- **RF-09** *(catálogo reestruturado — rodada 5: 2 níveis, orientado à operação de temporada)* O catálogo deixa de ser uma lista plana e passa a ter **12 grupos**, cada um com suas subcategorias (48 no total), pensados para cobrir todo o ciclo operacional de um imóvel de temporada — não só manutenção reativa. Editável pelo Admin (RF-11) em ambos os níveis.
 
   | Grupo | Subcategorias |
   |---|---|
@@ -225,7 +225,7 @@ erDiagram
 
 - **service_provider**: id, user_id (fk auth), nome/razão social, tipo_pessoa (`PF`/`PJ`), documento (cpf/cnpj), telefone, email, bio, avatar_url, status (`pending_approval`, `active`, `past_due`, `inactive`, `suspended`), rating_avg, rating_count, disponibilidade_24h (bool), atende_fins_semana (bool), atende_feriados (bool), created_at, approved_at.
 - **service_category_group**: id, nome, ícone, ordem — os 12 grupos do catálogo (RF-09), só organização visual/administrativa.
-- **service_category**: id, group_id (fk `service_category_group`), nome, slug, ícone, ativo (bool) — as 46 subcategorias; é este id que `provider_service` referencia (nível efetivamente buscável/salvo, RF-02).
+- **service_category**: id, group_id (fk `service_category_group`), nome, slug, ícone, ativo (bool) — as 48 subcategorias; é este id que `provider_service` referencia (nível efetivamente buscável/salvo, RF-02).
 - **provider_service**: provider_id, category_id, preco_base, unidade_preco, descricao.
 - **provider_documents**: provider_id, tipo (`cpf_rg`, `cnpj`), arquivo_url, status (`pending`, `approved`, `rejected`), created_at — **privado**, nunca exposto no perfil público, só legível por `is_current_user_platform_admin()` (RF-42).
 - **coverage_area**: provider_id, city_id (fk `cities`), bairro (fk/nome do bairro dentro da cidade), lat/lng + raio_km — *geocodificado desde a Fase 1* (decisão da seção 15, item 7; antes cogitado só para a Fase 2).
